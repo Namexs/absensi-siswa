@@ -40,6 +40,19 @@ setelah kunjungan pertama.
   termasuk akun yang pendaftarannya gagal/belum lengkap dan belum memiliki
   data siswa; bila akun itu memiliki data siswa, data dan kehadirannya ikut
   terhapus.
+- **Kelas hanya dibuat dan diatur oleh Admin** (tab **Semua Kelas**):
+  membuat kelas baru, mengubah namanya, dan menghapusnya. Setiap kelas
+  **wajib memiliki guru pemilik (wali kelas)** yang dipilih Admin saat
+  pembuatan — tidak ada kelas khusus Admin. Kelas yang masih berisi siswa
+  **tidak dapat dihapus**; siswanya harus dipindahkan dulu.
+- **Admin menempatkan setiap siswa ke kelasnya** (tombol **Atur Kelas**
+  pada setiap baris siswa): siswa yang mendaftar sendiri tidak memilih
+  kelas — setelah identitasnya tersimpan ia berstatus **"Belum diatur
+  Admin"** dan tampil di panel admin sebagai antrean penempatan. Begitu
+  Admin menempatkannya ke sebuah kelas, siswa itu **sepenuhnya terlihat
+  dan terkelola oleh guru wali kelas tersebut** (identitas, dokumen,
+  ubahan, absensi, rekap) — data siswa tidak pernah hanya-di-Admin
+  setelah ditempatkan.
 
 ## Token pendaftaran
 
@@ -65,15 +78,22 @@ pendaftaran akun ganda/sembarangan:
 - Mode Guru memerlukan **akun guru** yang didaftarkan sendiri dengan
   **email, nomor HP, kata sandi, dan Token Guru (7 karakter)** dari Admin;
   masuk memakai **email + kata sandi**.
-- Setiap guru hanya melihat dan mengelola **data miliknya**: kelas yang ia
-  buat berlabel pemilik akunnya (`ownerTeacherId`), dan siswa/absensi/rekap
-  yang tampil hanyalah yang berada di kelas-kelas itu. Data guru lain di
-  perangkat yang sama tidak tercampur dan tidak terlihat.
+- Setiap guru hanya melihat dan mengelola **data miliknya**: kelas yang
+  ditugaskan Admin kepadanya berlabel pemilik akunnya (`ownerTeacherId`),
+  dan siswa/absensi/rekap yang tampil hanyalah yang berada di kelas-kelas
+  itu. Data guru lain di perangkat yang sama tidak tercampur dan tidak
+  terlihat.
+- **Guru tidak membuat kelas** — kelas dibuat dan diatur oleh Admin, yang
+  juga menempatkan siswa pendaftar ke kelasnya masing-masing. Guru
+  menambahkan siswa (satu-satu atau banyak sekaligus) ke kelas yang sudah
+  ditugaskan Admin kepadanya; bila Admin belum menugaskan kelas, aplikasi
+  menampilkan pesan untuk menghubungi Admin.
 - Fitur guru: Beranda ringkasan hari ini, absensi harian per kelas
   (Hadir/Sakit/Izin/Alpa + keterangan), **Pindai QR** — guru memindai QR
   siswa untuk mencatat kehadiran siswa tersebut hari ini (QR siswa yang
-  belum dikenal otomatis diimpor ke kelas guru), kelola kelas & siswa
-  (tambah satu-satu atau banyak sekaligus, lihat Detail identitas &
+  belum dikenal diimpor hanya bila kelas pada QR adalah kelas milik guru
+  tersebut; bila belum diatur Admin atau milik guru lain, pindaian ditolak
+  dengan penjelasan), kelola siswa di kelasnya (lihat Detail identitas &
   dokumen siswa), cetak kartu QR satu kelas, dan rekap bulanan.
 
 ### 🎓 Siswa
@@ -92,8 +112,15 @@ pendaftaran akun ganda/sembarangan:
 - Lewat tombol itu pengguna mendaftarkan **satu siswa** (satu akun = satu
   pendaftaran; formulir terkunci setelahnya) dengan **identitas lengkap**:
   nama lengkap, NISN, tempat lahir, tanggal lahir, nama ayah, nama ibu,
-  anak ke berapa, alamat, NIK, email, nomor HP, kelas, dan jenis kelamin —
+  anak ke berapa, alamat, NIK, email, nomor HP, dan jenis kelamin —
   plus unggahan foto **Kartu Keluarga (KK), KTP ayah, dan KTP ibu**.
+- **Kelas tidak dipilih oleh siswa.** Formulir identitas tidak memuat
+  kolom kelas sama sekali: setelah identitas tersimpan, siswa berstatus
+  **"Belum diatur Admin"** sampai Admin menempatkannya ke kelasnya dari
+  panel admin. QR pribadi tetap ada begitu identitas lengkap tersimpan
+  (gerbang QR adalah kelengkapan identitas, bukan kelas), dan isi QR
+  selalu mencerminkan kelas siswa saat ini — penempatan/pemindahan oleh
+  Admin langsung mengubah yang tampil pada QR dan hasil pindaiannya.
 - **QR pribadi hanya ada setelah identitas lengkap tersimpan.** Selama
   data siswa belum diisi dan lolos validasi, portal siswa tidak
   menampilkan QR apa pun; QR muncul begitu data siswa tersimpan.
@@ -214,7 +241,9 @@ data yang dikirim ke mana pun. Artinya:
   dapat dipindahkan lewat Ekspor & Impor Data).
 - Jangan menghapus data peramban/cache aplikasi ini bila tidak ingin
   datanya hilang. Buat ekspor JSON secara berkala sebagai cadangan.
-- Aplikasi mulai dari kosong: guru mengisi kelas dan siswanya sendiri.
+- Aplikasi mulai dari kosong: Admin membuat kelas (dengan wali kelas),
+  guru menambahkan siswa ke kelas yang ditugaskan kepadanya, dan siswa
+  yang mendaftar sendiri ditempatkan Admin ke kelasnya masing-masing.
 
 ## Memasang di HP
 

@@ -322,7 +322,10 @@ function esc(s){
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function getClass(id){ return db.classes.find(c => c.id === id) || null; }
-function className(id){ const c = getClass(id); return c ? c.name : '-'; }
+/* Nama kelas untuk ditampilkan. Siswa yang belum ditempatkan Admin ke
+   kelas mana pun (classId kosong/null) berstatus "Belum diatur Admin" —
+   label ini tampil di portal siswa, daftar-daftar, detail, dan isi QR. */
+function className(id){ const c = getClass(id); return c ? c.name : 'Belum diatur Admin'; }
 function getStudent(id){ return db.students.find(s => s.id === id) || null; }
 function findClassByName(name, ownerId){
   const n = String(name || '').trim().toLowerCase();
@@ -459,11 +462,11 @@ function renderBeranda(){
       '<div class="card"><div class="empty">' +
       '<div class="big">👋</div>' +
       '<h2>Selamat datang di Absensi Siswa</h2>' +
-      '<p>Belum ada kelas/siswa atas nama akun guru Anda. Mulai dalam dua langkah mudah:</p>' +
-      '<p><b>1.</b> Tambahkan kelas dan siswa di tab <b>Siswa</b>.<br>' +
+      '<p>Belum ada kelas/siswa atas nama akun guru Anda. Kelas dibuat dan diatur oleh <b>Admin</b> — bila Admin belum menugaskan kelas kepada Anda, hubungi Admin terlebih dahulu.</p>' +
+      '<p><b>1.</b> Setelah Admin menugaskan kelas, tambahkan siswa ke kelas itu di tab <b>Siswa</b>.<br>' +
       '<b>2.</b> Isi kehadiran setiap hari di tab <b>Absensi</b>, atau pindai QR siswa di tab <b>Pindai</b>.</p>' +
-      '<p class="small">Siswa juga bisa mendaftar sendiri dari HP mereka lewat mode <b>Siswa</b> di kanan atas, lalu menunjukkan QR pribadinya untuk dipindai guru.</p>' +
-      '<button class="btn" onclick="switchTab(\'siswa\')">➕ Tambah Kelas &amp; Siswa</button>' +
+      '<p class="small">Siswa juga bisa mendaftar sendiri dari HP mereka lewat mode <b>Siswa</b>; Admin kemudian menempatkan mereka ke kelasnya masing-masing, dan setelah itu mereka menunjukkan QR pribadinya untuk dipindai guru.</p>' +
+      '<button class="btn" onclick="switchTab(\'siswa\')">Ke Tab Siswa</button>' +
       '</div></div>';
     return;
   }
@@ -534,7 +537,7 @@ function renderAbsensi(){
   const myClasses = guruClasses(acc);
   if(myClasses.length === 0){
     el.innerHTML = '<div class="card"><div class="empty"><div class="big">📝</div>' +
-      '<p>Belum ada kelas atas nama Anda. Tambahkan kelas dan siswa dulu di tab <b>Siswa</b>.</p>' +
+      '<p>Belum ada kelas atas nama Anda. Kelas dibuat dan diatur oleh <b>Admin</b> — hubungi Admin untuk ditugaskan kelas, lalu tambahkan siswa di tab <b>Siswa</b>.</p>' +
       '<button class="btn" onclick="switchTab(\'siswa\')">Ke Tab Siswa</button></div></div>';
     return;
   }
@@ -731,6 +734,11 @@ function handleScan(text){
   let st = getStudent(sid);
 
   if(st && acc && acc.role === 'guru'){
+    if(!st.classId){
+      pindaiMsg = { type:'err', text:'Siswa "' + st.name + '" belum ditempatkan Admin ke kelas mana pun. Kehadiran belum dapat dicatat — minta Admin mengatur kelas siswa ini terlebih dahulu.' };
+      showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+      return;
+    }
     const kls = getClass(st.classId);
     if(!kls || kls.ownerTeacherId !== acc.id){
       pindaiMsg = { type:'err', text:'Siswa "' + st.name + '" terdaftar pada kelas milik akun guru lain di perangkat ini. Kehadiran tidak dicatat di akun Anda agar data antar-guru tidak tercampur.' };
@@ -740,24 +748,29 @@ function handleScan(text){
   }
 
   if(!st && payload && payload.nama){
-    // Siswa belum dikenal: impor dari isi QR ke kelas milik guru yang masuk
-    // (dengan penjaga anti-duplikat seluruh identitas).
-    let cls = acc ? findClassByName(payload.kelas, acc.id) : findClassByName(payload.kelas);
+    // Siswa belum dikenal: impor dari isi QR — HANYA bila kelas yang
+    // tertulis pada QR adalah kelas milik guru yang sedang masuk. Kelas
+    // dibuat & diatur oleh Admin; guru TIDAK membuat kelas baru dari
+    // pindaian. Bila kelas pada QR belum diatur Admin atau milik guru
+    // lain, impor ditolak dengan penjelasan (dengan penjaga
+    // anti-duplikat seluruh identitas bila impor berjalan).
+    const cls = acc ? findClassByName(payload.kelas, acc.id) : null;
+    if(!cls){
+      pindaiMsg = { type:'err', text:'Siswa "' + String(payload.nama) + '" belum dapat diimpor: kelas pada QR-nya ("' + String(payload.kelas || '-') + '") bukan kelas milik Anda di perangkat ini. Kelas diatur oleh Admin — minta Admin menempatkan siswa ini ke salah satu kelas Anda terlebih dahulu.' };
+      showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+      return;
+    }
     const candScan = normStudent({
       name: String(payload.nama),
       nis: payload.nis ? String(payload.nis) : '',
       gender: '',
-      classId: cls ? cls.id : '__kelas-baru__'
+      classId: cls.id
     });
     const dupScan = cekDuplikat(candScan, null);
     if(dupScan){
       pindaiMsg = { type:'err', text:'❌ Impor dari QR dibatalkan — ' + dupScan };
       showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
       return;
-    }
-    if(!cls){
-      cls = { id: newClassId(), name: String(payload.kelas || 'Tanpa Kelas').trim() || 'Tanpa Kelas', ownerTeacherId: acc ? acc.id : null };
-      db.classes.push(cls);
     }
     st = normStudent({ id: sid, name: candScan.name, nis: candScan.nis, gender: '', classId: cls.id });
     db.students.push(st);
@@ -978,16 +991,15 @@ function renderSiswaGuru(){
   const myClasses = guruClasses(acc);
   if(siswaClassFilter && !myClasses.some(c => c.id === siswaClassFilter)) siswaClassFilter = '';
 
-  /* --- Kelola kelas (hanya milik guru yang masuk) --- */
+  /* --- Kelas milik guru (HANYA LIHAT): kelas dibuat & diatur Admin --- */
   let classList = '';
   if(myClasses.length === 0){
-    classList = '<p class="muted">Belum ada kelas atas nama Anda. Tambahkan kelas pertama Anda, misalnya "VII-A". Kelas yang Anda buat hanya terlihat oleh akun Anda.</p>';
+    classList = '<p class="muted">Admin belum membuat atau menugaskan kelas untuk Anda. Kelas hanya dapat dibuat oleh <b>Admin</b> — hubungi Admin agar dibuatkan kelas atas nama Anda; setelah itu Anda dapat menambahkan siswa ke kelas tersebut di bawah ini.</p>';
   } else {
     classList = myClasses.map(c => {
       const n = db.students.filter(s => s.classId === c.id).length;
       return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(c.name) + '</span>' +
-        '<div class="sub">' + n + ' siswa</div></div>' +
-        '<div class="icon-btns"><button class="btn danger small-btn" onclick="hapusKelas(\'' + c.id + '\')">Hapus</button></div></div>';
+        '<div class="sub">' + n + ' siswa</div></div></div>';
     }).join('');
   }
 
@@ -995,7 +1007,7 @@ function renderSiswaGuru(){
   const ed = editStudentId ? getStudent(editStudentId) : null;
   let formHtml;
   if(myClasses.length === 0){
-    formHtml = '<p class="muted">Tambahkan kelas terlebih dahulu sebelum menambah siswa.</p>';
+    formHtml = '<p class="muted">Admin belum membuat atau menugaskan kelas untuk Anda, jadi siswa belum dapat ditambahkan. Hubungi Admin untuk dibuatkan kelas atas nama Anda.</p>';
   } else {
     formHtml =
       '<form onsubmit="return submitSiswa(event)">' +
@@ -1043,16 +1055,13 @@ function renderSiswaGuru(){
 
   el.innerHTML =
     '<div class="card"><h3>🏫 Kelas Saya</h3>' +
-      '<form onsubmit="return submitKelas(event)"><div class="row">' +
-        '<div class="field" style="margin-bottom:0"><input id="kls-nama" class="inp" placeholder="Nama kelas baru, misalnya VII-A" required></div>' +
-        '<div style="flex:0 0 auto"><button class="btn" type="submit">➕ Tambah Kelas</button></div>' +
-      '</div></form>' +
-      '<div style="margin-top:8px">' + classList + '</div>' +
+      '<p class="muted" style="margin-top:0">Kelas dibuat, diubah namanya, dan diatur oleh <b>Admin</b>. Daftar di bawah adalah kelas yang ditugaskan Admin kepada Anda — Anda menambahkan siswa ke kelas-kelas ini, dan siswa yang ditempatkan Admin ke kelas Anda juga tampil di sini.</p>' +
+      classList +
     '</div>' +
     '<div class="card"><h3>' + (ed ? '✏️ Ubah Siswa' : '➕ Tambah Siswa') + '</h3>' + formHtml + '</div>' +
     '<div class="card"><h3>📥 Tambah Banyak Siswa</h3>' +
       (myClasses.length === 0
-        ? '<p class="muted">Tambahkan kelas terlebih dahulu.</p>'
+        ? '<p class="muted">Admin belum membuat atau menugaskan kelas untuk Anda — hubungi Admin terlebih dahulu.</p>'
         : '<form onsubmit="return submitBulk(event)">' +
           '<div class="field"><label for="bulk-kelas">Masuk ke Kelas</label><select id="bulk-kelas" class="inp">' + classOptionsFrom(myClasses, siswaClassFilter || myClasses[0].id, false) + '</select></div>' +
           '<div class="field"><label for="bulk-teks">Satu siswa per baris — format: Nama;NISN</label>' +
@@ -1070,34 +1079,10 @@ function renderSiswaGuru(){
     eksporImporCardHtml('guru');
 }
 function siswaFilterChange(v){ siswaClassFilter = v; renderSiswaGuru(); }
-function submitKelas(ev){
-  ev.preventDefault();
-  const acc = currentAccount();
-  const nama = document.getElementById('kls-nama').value.trim();
-  if(!nama || !acc) return false;
-  if(nama.length > 60){ alert('Nama kelas terlalu panjang (maks. 60 karakter).'); return false; }
-  if(findClassByName(nama, acc.id)){ alert('Anda sudah memiliki kelas "' + nama + '".'); return false; }
-  db.classes.push({ id: newClassId(), name: nama, ownerTeacherId: acc.id });
-  saveDB();
-  renderSiswaGuru();
-  showBanner(document.getElementById('siswa-banner'), 'ok', '✅ Kelas "' + nama + '" ditambahkan sebagai kelas Anda.');
-  return false;
-}
-function hapusKelas(cid){
-  const c = getClass(cid);
-  if(!c) return;
-  const n = db.students.filter(s => s.classId === cid).length;
-  if(!confirm('Hapus kelas "' + c.name + '"?' + (n ? ' ' + n + ' siswa di dalamnya beserta catatan kehadirannya juga akan terhapus.' : ''))) return;
-  const removedIds = db.students.filter(s => s.classId === cid).map(s => s.id);
-  db.attendance = db.attendance.filter(a => removedIds.indexOf(a.studentId) === -1);
-  db.students = db.students.filter(s => s.classId !== cid);
-  db.classes = db.classes.filter(x => x.id !== cid);
-  if(db.myStudentId && removedIds.indexOf(db.myStudentId) !== -1) db.myStudentId = null;
-  if(siswaClassFilter === cid) siswaClassFilter = '';
-  if(absenClass === cid) absenClass = '';
-  saveDB();
-  renderSiswaGuru();
-}
+/* Guru TIDAK lagi membuat/menghapus kelas (aturan pemilik): pembuatan,
+   pengubahan nama, penghapusan, dan penempatan siswa ke kelas adalah
+   wewenang Admin dari Panel Admin. Guru hanya menambahkan siswa ke
+   kelas yang sudah ditugaskan Admin kepadanya. */
 function submitSiswa(ev){
   ev.preventDefault();
   const nama = document.getElementById('f-nama').value.trim();
@@ -1183,7 +1168,7 @@ function renderRekap(){
   const myClasses = guruClasses(acc);
   if(myClasses.length === 0){
     el.innerHTML = '<div class="card"><div class="empty"><div class="big">📊</div>' +
-      '<p>Belum ada data untuk direkap. Tambahkan kelas dan siswa di tab <b>Siswa</b>, lalu isi absensi.</p></div></div>';
+      '<p>Belum ada data untuk direkap. Kelas diatur oleh <b>Admin</b>; setelah Admin menugaskan kelas kepada Anda, tambahkan siswa di tab <b>Siswa</b> lalu isi absensi.</p></div></div>';
     return;
   }
   if(rekapClass && !myClasses.some(c => c.id === rekapClass)) rekapClass = '';
@@ -1739,7 +1724,6 @@ function validasiIdentitas(v){
   if(v.tempatLahir.length > 60) return 'Tempat lahir terlalu panjang (maks. 60 karakter).';
   if(v.alamat.length > 300) return 'Alamat terlalu panjang (maks. 300 karakter).';
   if(v.anakKe && (!digit(v.anakKe) || +v.anakKe < 1 || +v.anakKe > 30)) return 'Kolom "Anak ke Berapa" harus berupa angka antara 1 dan 30.';
-  if(v.kelasLain && v.kelasLain.length > 60) return 'Nama kelas terlalu panjang (maks. 60 karakter).';
   if(v.tglLahir){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(v.tglLahir)) return 'Tanggal lahir tidak valid.';
     if(v.tglLahir > todayStr()) return 'Tanggal lahir tidak boleh berada di masa depan.';
@@ -1792,7 +1776,7 @@ function renderPortalSiswaAwal(el, acc){
     '<div class="card"><h2>🎉 Selamat Datang!</h2>' +
       '<p style="margin-top:0">Akun Anda <b>sudah aktif</b> dan Anda sudah masuk ke Portal Siswa.</p>' +
       '<div class="banner info show">📝 <b>Data siswa Anda belum diisi.</b> Isi kapan saja Anda siap lewat tombol di bawah — tidak harus sekarang. Anda tetap bebas keluar dan masuk lagi kapan pun; masuk Anda <b>tidak</b> terhalang oleh data yang belum lengkap.</div>' +
-      '<p class="muted">Setelah data siswa tersimpan, QR pribadi Anda muncul di portal ini untuk ditunjukkan kepada guru saat absensi. <b>Selama data belum lengkap, QR belum ada.</b> Yang perlu disiapkan: nama lengkap, NISN, tempat &amp; tanggal lahir, nama ayah dan ibu, anak ke berapa, NIK, alamat, email, nomor HP, dan kelas — serta foto KK, KTP ayah, dan KTP ibu bila diminta sekolah.</p>' +
+      '<p class="muted">Setelah data siswa tersimpan, QR pribadi Anda muncul di portal ini untuk ditunjukkan kepada guru saat absensi. <b>Selama data belum lengkap, QR belum ada.</b> Yang perlu disiapkan: nama lengkap, NISN, tempat &amp; tanggal lahir, nama ayah dan ibu, anak ke berapa, NIK, alamat, email, dan nomor HP — serta foto KK, KTP ayah, dan KTP ibu bila diminta sekolah. <b>Kelas tidak dipilih di sini</b> — kelas Anda diatur oleh Admin: setelah data tersimpan, Admin menempatkan Anda ke kelas Anda.</p>' +
       '<button class="btn block" onclick="bukaIsiDataSiswa()">📝 Isi Data Siswa</button>' +
     '</div>';
 }
@@ -1993,7 +1977,7 @@ function renderGerbangGuru(el){
         '<button class="btn block" type="submit">Masuk sebagai Guru</button>' +
       '</form>' + lupaSandiHtml('guru') + '</div>' +
     '<div class="card"><h3>Belum punya akun guru? Daftar Akun Guru</h3>' +
-      '<p class="muted" style="margin-top:0">Buat akun guru dengan email, nomor HP, dan kata sandi. Pendaftaran juga memerlukan <b>Token Guru (7 karakter)</b> dari Admin — satu token hanya berlaku untuk satu akun. Akun tersimpan hanya di perangkat ini (tanpa server). Kelas dan siswa yang Anda buat menjadi milik akun Anda dan tidak terlihat oleh guru lain di perangkat yang sama.</p>' +
+      '<p class="muted" style="margin-top:0">Buat akun guru dengan email, nomor HP, dan kata sandi. Pendaftaran juga memerlukan <b>Token Guru (7 karakter)</b> dari Admin — satu token hanya berlaku untuk satu akun. Akun tersimpan hanya di perangkat ini (tanpa server). Kelas untuk Anda dibuat dan diatur oleh Admin; siswa yang Anda tambahkan masuk ke kelas-kelas tersebut dan tidak terlihat oleh guru lain di perangkat yang sama.</p>' +
       '<form onsubmit="return submitDaftarAkunGuru(event)">' +
         '<div class="field"><label for="gr-email">Email</label><input id="gr-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="email" value="' + esc(rk.email) + '"></div>' +
         '<div class="field"><label for="gr-hp">Nomor HP</label><input id="gr-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel" value="' + esc(rk.phone) + '"></div>' +
@@ -2208,16 +2192,12 @@ function dokFieldsHtml(cakupan, draf){
 
 /* Formulir identitas lengkap — dipakai pendaftaran siswa, Edit Identitas,
    dan ubahan oleh admin. Awalan id: 'd' (daftar), 'u' (ubah), 'adm' (admin). */
-function kelasOptionsHtml(kv){
-  let opts = '';
-  db.classes.forEach(c => { opts += '<option value="' + c.id + '"' + (kv.kelas === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; });
-  opts += '<option value="__lain__"' + (kv.kelas === '__lain__' ? ' selected' : '') + '>Kelas lain (tulis sendiri)…</option>';
-  return opts;
-}
-function kelasLainChange(p, v){
-  const w = document.getElementById(p + '-kelas-lain-wrap');
-  if(w) w.style.display = (v === '__lain__') ? '' : 'none';
-}
+/* KELAS TIDAK LAGI DIPILIH PADA FORMULIR IDENTITAS (aturan pemilik):
+   kolom kelas/nama kelas dihilangkan dari formulir siswa (pendaftaran,
+   Edit Identitas, maupun ubahan admin). Kelas dibuat dan diatur hanya
+   oleh Admin dari Panel Admin, dan Admin yang menempatkan setiap siswa
+   ke kelasnya (tombol "Atur Kelas"). Siswa yang belum ditempatkan
+   berstatus "Belum diatur Admin" (classId null). */
 function identFieldsHtml(p, kv){
   const sel = (v, cur) => v === cur ? ' selected' : '';
   return '' +
@@ -2246,57 +2226,48 @@ function identFieldsHtml(p, kv){
     '<div class="field"><label for="' + p + '-gender">Jenis Kelamin</label><select id="' + p + '-gender" class="inp">' +
       '<option value="Laki-laki"' + sel('Laki-laki', kv.gender) + '>Laki-laki</option>' +
       '<option value="Perempuan"' + sel('Perempuan', kv.gender) + '>Perempuan</option></select></div>' +
-    '<div class="field"><label for="' + p + '-kelas">Kelas</label><select id="' + p + '-kelas" class="inp" onchange="kelasLainChange(\'' + p + '\', this.value)">' + kelasOptionsHtml(kv) + '</select></div>' +
-  '</div>' +
-  '<div class="field" id="' + p + '-kelas-lain-wrap" style="display:' + (kv.kelas === '__lain__' ? '' : 'none') + '"><label for="' + p + '-kelas-lain">Nama Kelas</label><input id="' + p + '-kelas-lain" class="inp" placeholder="Misalnya VII-A" value="' + esc(kv.kelasLain || '') + '"></div>';
+  '</div>';
 }
 function bacaIdentitas(p){
   const g = id => { const e = document.getElementById(id); return e ? e.value : ''; };
-  const kv = g(p + '-kelas');
   return {
     nama: g(p + '-nama').trim(), nis: g(p + '-nis').trim(),
     tempatLahir: g(p + '-tempatlahir').trim(), tglLahir: g(p + '-tgllahir'),
     ayah: g(p + '-ayah').trim(), ibu: g(p + '-ibu').trim(),
     anakKe: g(p + '-anakke').trim(), nik: g(p + '-nik').trim(),
     alamat: g(p + '-alamat').trim(), email: g(p + '-email').trim(), hp: g(p + '-hp').trim(),
-    gender: g(p + '-gender'), kelas: kv,
-    kelasLain: kv === '__lain__' ? g(p + '-kelas-lain').trim() : ''
+    gender: g(p + '-gender')
   };
 }
 function kvDariSiswa(st){
   return { nama: st.name || '', nis: st.nis || '', tempatLahir: st.tempatLahir || '', tglLahir: st.tglLahir || '',
     ayah: st.ayah || '', ibu: st.ibu || '', anakKe: st.anakKe || '', nik: st.nik || '', alamat: st.alamat || '',
-    email: st.email || '', hp: st.hp || '', gender: st.gender || 'Laki-laki', kelas: st.classId, kelasLain: '' };
+    email: st.email || '', hp: st.hp || '', gender: st.gender || 'Laki-laki' };
 }
-function kandidatDari(v, cls){
+/* Kandidat untuk cek duplikat: kelas BUKAN pilihan pengguna — classId di
+   sini adalah kelas siswa saat ini (null = belum diatur Admin; pada
+   ubahan, kelas yang sudah ditempatkan Admin tidak berubah). */
+function kandidatDari(v, classId){
   return { name: v.nama, nis: v.nis, tempatLahir: v.tempatLahir, tglLahir: v.tglLahir, ayah: v.ayah, ibu: v.ibu,
     anakKe: v.anakKe, nik: v.nik, alamat: v.alamat, email: v.email, hp: v.hp, gender: v.gender,
-    classId: cls ? cls.id : '__kelas-baru__' };
+    classId: classId || null };
 }
-function terapkanIdentitas(st, v, cls){
+/* Terapkan identitas ke catatan siswa. classId TIDAK disentuh di sini —
+   penempatan kelas adalah wewenang Admin (tombol "Atur Kelas"). */
+function terapkanIdentitas(st, v){
   st.name = v.nama; st.nis = v.nis; st.tempatLahir = v.tempatLahir; st.tglLahir = v.tglLahir;
   st.ayah = v.ayah; st.ibu = v.ibu; st.anakKe = v.anakKe; st.nik = v.nik; st.alamat = v.alamat;
-  st.email = v.email; st.hp = v.hp; st.gender = v.gender; st.classId = cls.id;
-}
-/* Cari kelas dari pilihan formulir; kelas baru dibuat SETELAH cek duplikat lolos. */
-function cariKelasForm(v){
-  if(v.kelas === '__lain__'){
-    if(!v.kelasLain) return { galat: 'Isi nama kelas terlebih dahulu.' };
-    return { cls: findClassByName(v.kelasLain) };
-  }
-  const cls = getClass(v.kelas);
-  if(!cls) return { galat: 'Pilih kelas terlebih dahulu.' };
-  return { cls: cls };
+  st.email = v.email; st.hp = v.hp; st.gender = v.gender;
 }
 
 /* ---------- Pendaftaran siswa (di dalam portal, setelah masuk) ---------- */
 function renderDaftarSiswa(el, acc){
-  const kv = daftarKeep || { nama:'', nis:'', tempatLahir:'', tglLahir:'', ayah:'', ibu:'', anakKe:'', nik:'', alamat:'', email:'', hp:'', gender:'Laki-laki', kelas:'', kelasLain:'' };
+  const kv = daftarKeep || { nama:'', nis:'', tempatLahir:'', tglLahir:'', ayah:'', ibu:'', anakKe:'', nik:'', alamat:'', email:'', hp:'', gender:'Laki-laki' };
   if(!dokDaftar) dokDaftar = dokKosong();
   el.innerHTML =
     akunBarHtml(acc) +
     '<div class="card"><h2>Isi Data Siswa</h2>' +
-      '<p class="muted" style="margin-top:0">Satu akun hanya dapat mendaftarkan <b>satu siswa</b>. Setelah data tersimpan, formulir ini terkunci — bila ada kesalahan ketik, perbaiki lewat menu <b>Edit Identitas</b> — dan QR pribadi Anda langsung muncul. Isi identitas selengkapnya; pendaftaran hanya ditolak bila <b>seluruh</b> identitasnya persis sama dengan siswa yang sudah terdaftar. Bila belum siap, kembali dulu saja — isian yang sudah Anda ketik tersimpan sebagai draf di halaman ini.</p>' +
+      '<p class="muted" style="margin-top:0">Satu akun hanya dapat mendaftarkan <b>satu siswa</b>. Setelah data tersimpan, formulir ini terkunci — bila ada kesalahan ketik, perbaiki lewat menu <b>Edit Identitas</b> — dan QR pribadi Anda langsung muncul. Isi identitas selengkapnya; pendaftaran hanya ditolak bila <b>seluruh</b> identitasnya persis sama dengan siswa yang sudah terdaftar. <b>Kelas tidak dipilih di formulir ini</b> — kelas diatur oleh Admin, yang akan menempatkan Anda ke kelas Anda setelah data tersimpan. Bila belum siap, kembali dulu saja — isian yang sudah Anda ketik tersimpan sebagai draf di halaman ini.</p>' +
       akunBannerHtml() +
       '<form onsubmit="return submitDaftar(event)">' +
         identFieldsHtml('d', kv) +
@@ -2321,28 +2292,20 @@ function submitDaftar(ev){
     akunMsg = { type:'err', text:'❌ Data belum valid: ' + salahD };
     render(); return false;
   }
-  const hasil = cariKelasForm(v);
-  if(hasil.galat){ alert(hasil.galat); return false; }
-  let cls = hasil.cls;
-  const dupMsg = cekDuplikat(kandidatDari(v, cls), null);
+  const dupMsg = cekDuplikat(kandidatDari(v, null), null);
   if(dupMsg){
     akunMsg = { type:'err', text:'❌ ' + dupMsg };
     render(); return false;
   }
-  let kelasBaru = null;
-  if(!cls){
-    kelasBaru = { id: newClassId(), name: v.kelasLain, ownerTeacherId: null };
-    cls = kelasBaru;
-  }
-  const st = normStudent({ id: newStudentId(), ownerAccountId: acc.id });
-  terapkanIdentitas(st, v, cls);
+  // Kelas TIDAK ditentukan siswa: siswa baru berstatus "Belum diatur
+  // Admin" (classId null) sampai Admin menempatkannya ke kelasnya.
+  const st = normStudent({ id: newStudentId(), ownerAccountId: acc.id, classId: null });
+  terapkanIdentitas(st, v);
   st.dokumen = Object.assign(dokKosong(), dokDaftar || {});
-  if(kelasBaru) db.classes.push(kelasBaru);
   db.students.push(st);
   if(!saveDBStrict()){
     // Kuota penuh: batalkan penambahan agar data tidak setengah tersimpan.
     db.students = db.students.filter(s => s.id !== st.id);
-    if(kelasBaru) db.classes = db.classes.filter(c => c.id !== kelasBaru.id);
     akunMsg = { type:'err', text:'❌ ' + PESAN_KUOTA };
     render(); return false;
   }
@@ -2350,7 +2313,7 @@ function submitDaftar(ev){
   dokDaftar = null;
   isiDataSiswa = false;
   setSession(acc);
-  akunMsg = { type:'ok', text:'✅ Data siswa berhasil disimpan. QR pribadi siswa sudah siap di bawah.' };
+  akunMsg = { type:'ok', text:'✅ Data siswa berhasil disimpan. QR pribadi siswa sudah siap di bawah. Kelas Anda akan diatur oleh Admin.' };
   render();
   return false;
 }
@@ -2436,29 +2399,21 @@ function submitUbahSaya(ev){
     akunMsg = { type:'err', text:'❌ Data belum valid: ' + salahU };
     render(); return false;
   }
-  const hasil = cariKelasForm(v);
-  if(hasil.galat){ alert(hasil.galat); return false; }
-  let cls = hasil.cls;
-  const dupMsg = cekDuplikat(kandidatDari(v, cls), me.id);
+  // Kelas tidak diubah lewat Edit Identitas — penempatan kelas adalah
+  // wewenang Admin; kandidat duplikat memakai kelas siswa saat ini.
+  const dupMsg = cekDuplikat(kandidatDari(v, me.classId), me.id);
   if(dupMsg){
     akunMsg = { type:'err', text:'❌ ' + dupMsg };
     render(); return false;
   }
-  let kelasBaru = null;
-  if(!cls){
-    kelasBaru = { id: newClassId(), name: v.kelasLain, ownerTeacherId: null };
-    cls = kelasBaru;
-  }
   const cadangan = JSON.stringify(me);
-  if(kelasBaru) db.classes.push(kelasBaru);
-  terapkanIdentitas(me, v, cls);
+  terapkanIdentitas(me, v);
   if(dokUbah) me.dokumen = Object.assign(dokKosong(), dokUbah);
   if(!saveDBStrict()){
     // Kuota penuh: kembalikan data lama agar tidak setengah tersimpan.
     const pulih = JSON.parse(cadangan);
     Object.keys(me).forEach(k => delete me[k]);
     Object.assign(me, pulih);
-    if(kelasBaru) db.classes = db.classes.filter(c => c.id !== kelasBaru.id);
     akunMsg = { type:'err', text:'❌ ' + PESAN_KUOTA };
     render(); return false;
   }
@@ -2494,6 +2449,8 @@ let adminEditId = null;
 let adminUbahKeep = null;
 let adminRekapMonth = todayStr().slice(0, 7);
 let adminResetId = null;     // akun yang sedang diatur ulang kata sandinya oleh admin
+let adminAturKelasId = null; // siswa yang sedang diatur kelasnya oleh admin
+let adminKelasEditId = null; // kelas yang sedang diubah namanya oleh admin
 
 function renderAdminMode(){
   const el = document.getElementById('admin-view');
@@ -2536,6 +2493,8 @@ function keluarAdmin(){
   adminEditId = null;
   adminUbahKeep = null;
   adminResetId = null;
+  adminAturKelasId = null;
+  adminKelasEditId = null;
   dokAdmin = null;
   // Kembali ke halaman awal: pemilih mode tampil lagi. Bila masih ada sesi
   // akun (guru/siswa) yang aktif, layar kembali ke portal akun itu.
@@ -2606,6 +2565,8 @@ async function submitAdminResetAkun(ev){
 function adminNav(v){
   adminView = v;
   if(v !== 'siswa'){ adminEditId = null; adminUbahKeep = null; dokAdmin = null; }
+  if(v !== 'kelas') adminKelasEditId = null;
+  adminAturKelasId = null;
   adminMsg = null;
   render();
 }
@@ -2691,6 +2652,7 @@ function renderPanelAdmin(el){
       navBtn('siswa', '👥 Semua Siswa') + navBtn('kelas', '🏫 Semua Kelas') + navBtn('rekap', '📊 Rekap Semua') + '</div>' +
     (adminMsg && (adminView !== 'siswa' || adminResetId || !adminEditId) ? '<div class="banner show ' + adminMsg.type + '">' + esc(adminMsg.text) + '</div>' : '') +
     (adminResetId ? adminResetHtml() : '') +
+    (adminAturKelasId ? adminAturKelasHtml() : '') +
     body +
     (adminView === 'ringkasan' ? eksporImporCardHtml('admin') : '');
 }
@@ -2723,6 +2685,7 @@ function adminRingkasanHtml(guruAccs, siswaAccs){
           '<div class="icon-btns">' +
           (st ? '<button class="btn small-btn" onclick="openQRModal(\'' + st.id + '\')">QR Siswa</button>' +
             '<button class="btn secondary small-btn" onclick="openDetailSiswa(\'' + st.id + '\')">Detail</button>' +
+            '<button class="btn secondary small-btn" onclick="adminMulaiAturKelas(\'' + st.id + '\')">Atur Kelas</button>' +
             '<button class="btn secondary small-btn" onclick="adminMulaiUbah(\'' + st.id + '\')">Ubah</button>' +
             '<button class="btn danger small-btn" onclick="adminHapusSiswa(\'' + st.id + '\')">Hapus Siswa</button>' : '') +
             '<button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + a.id + '\')">Atur Ulang Kata Sandi</button>' +
@@ -2736,6 +2699,7 @@ function barisSiswaAdmin(s){
     '<div class="icon-btns">' +
       '<button class="btn small-btn" onclick="openQRModal(\'' + s.id + '\')">QR</button>' +
       '<button class="btn secondary small-btn" onclick="openDetailSiswa(\'' + s.id + '\')">Detail</button>' +
+      '<button class="btn secondary small-btn" onclick="adminMulaiAturKelas(\'' + s.id + '\')">Atur Kelas</button>' +
       '<button class="btn secondary small-btn" onclick="adminMulaiUbah(\'' + s.id + '\')">Ubah</button>' +
       '<button class="btn danger small-btn" onclick="adminHapusSiswa(\'' + s.id + '\')">Hapus</button>' +
     '</div></div>';
@@ -2755,7 +2719,7 @@ function adminGuruHtml(guruAccs){
     '</select></div>' +
     '<p class="muted" style="margin:0">Guru ini memiliki <b>' + kelas.length + ' kelas</b> dan <b>' + murid.length + ' siswa</b>. Hari ini: ' + tercatat + ' tercatat, ' + hadir + ' hadir. Sebagai admin Anda dapat melihat dan mengubah data mereka dari sini.</p>' +
     '<div style="margin-top:12px"><button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + acc.id + '\')">🔑 Atur Ulang Kata Sandi Guru Ini</button></div></div>';
-  if(!kelas.length) h += '<div class="card"><p class="muted">Guru ini belum membuat kelas.</p></div>';
+  if(!kelas.length) h += '<div class="card"><p class="muted">Guru ini belum memiliki kelas.</p></div>';
   kelas.forEach(c => {
     const list = murid.filter(s => s.classId === c.id).slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
     h += '<div class="card"><h3>🏫 ' + esc(c.name) + ' <span class="muted small">(' + list.length + ' siswa)</span></h3>' +
@@ -2808,22 +2772,18 @@ function submitAdminUbahSiswa(ev){
     adminMsg = { type:'err', text:'❌ Data belum valid: ' + salahA };
     render(); return false;
   }
-  const hasil = cariKelasForm(v);
-  if(hasil.galat){ alert(hasil.galat); return false; }
-  let cls = hasil.cls;
-  const dupMsg = cekDuplikat(kandidatDari(v, cls), st.id);
+  // Kelas siswa tidak diubah lewat formulir ini — Admin menempatkan
+  // siswa lewat tombol "Atur Kelas"; kandidat duplikat memakai kelas
+  // siswa saat ini.
+  const dupMsg = cekDuplikat(kandidatDari(v, st.classId), st.id);
   if(dupMsg){ adminMsg = { type:'err', text:'❌ ' + dupMsg }; render(); return false; }
-  let kelasBaru = null;
-  if(!cls){ kelasBaru = { id: newClassId(), name: v.kelasLain, ownerTeacherId: null }; cls = kelasBaru; }
   const cadangan = JSON.stringify(st);
-  if(kelasBaru) db.classes.push(kelasBaru);
-  terapkanIdentitas(st, v, cls);
+  terapkanIdentitas(st, v);
   if(dokAdmin) st.dokumen = Object.assign(dokKosong(), dokAdmin);
   if(!saveDBStrict()){
     const pulih = JSON.parse(cadangan);
     Object.keys(st).forEach(k => delete st[k]);
     Object.assign(st, pulih);
-    if(kelasBaru) db.classes = db.classes.filter(c => c.id !== kelasBaru.id);
     adminMsg = { type:'err', text:'❌ ' + PESAN_KUOTA };
     render(); return false;
   }
@@ -2866,15 +2826,176 @@ function adminHapusAkunSiswa(id){
   adminMsg = { type:'ok', text:'✅ Akun siswa ' + acc.email + (st ? ' beserta data siswa dan catatan kehadirannya' : '') + ' berhasil dihapus.' };
   render();
 }
+/* ================= KELOLA KELAS (ADMIN) =================
+   Kelas HANYA dibuat & diatur oleh Admin (aturan pemilik): guru tidak
+   lagi membuat kelas sendiri. Setiap kelas WAJIB memiliki guru pemilik
+   (wali kelas) yang dipilih Admin saat pembuatan — TIDAK ada pilihan
+   kelas "khusus Admin": begitu siswa ditempatkan ke sebuah kelas, siswa
+   itu sepenuhnya terlihat & terkelola oleh guru pemilik kelas tersebut
+   (identitas, dokumen, ubahan, absensi, rekap). Siswa yang belum
+   ditempatkan berstatus "Belum diatur Admin" dan tampil di Panel Admin
+   sebagai antrean penempatan. */
 function adminKelasHtml(){
-  if(!db.classes.length) return '<div class="card"><p class="muted">Belum ada kelas di perangkat ini.</p></div>';
-  return '<div class="card"><h3>🏫 Semua Kelas di Perangkat Ini (' + db.classes.length + ')</h3>' +
-    db.classes.map(c => {
+  const guruAccs = db.accounts.filter(a => a.role === 'guru');
+  let h = '<div class="card"><h3>➕ Buat Kelas Baru</h3>' +
+    '<p class="muted" style="margin-top:0">Setiap kelas <b>wajib memiliki guru pemilik (wali kelas)</b> yang Anda pilih di sini — tidak ada kelas khusus Admin. Siswa yang Anda tempatkan ke kelas ini akan sepenuhnya terlihat dan terkelola oleh guru tersebut.</p>';
+  if(!guruAccs.length){
+    h += '<p class="muted">Belum ada akun guru terdaftar di perangkat ini, jadi kelas belum dapat dibuat — kelas wajib memiliki guru pemilik. Kelas dapat dibuat setelah ada guru yang mendaftar.</p></div>';
+  } else {
+    h += '<form onsubmit="return adminBuatKelas(event)">' +
+      '<div class="row">' +
+        '<div class="field"><label for="adm-kelas-nama">Nama Kelas</label><input id="adm-kelas-nama" class="inp" required placeholder="Misalnya VII-A"></div>' +
+        '<div class="field"><label for="adm-kelas-guru">Guru Pemilik (Wali Kelas)</label><select id="adm-kelas-guru" class="inp" required>' +
+          '<option value="">— Pilih guru pemilik —</option>' +
+          guruAccs.map(a => '<option value="' + a.id + '">' + esc(a.email) + '</option>').join('') +
+        '</select></div>' +
+      '</div>' +
+      '<button class="btn" type="submit">➕ Buat Kelas</button></form></div>';
+  }
+  if(adminKelasEditId){
+    const kc = getClass(adminKelasEditId);
+    if(kc){
+      h += '<div class="card"><h3>✏️ Ubah Nama Kelas</h3>' +
+        '<form onsubmit="return adminSimpanNamaKelas(event)">' +
+          '<div class="field"><label for="adm-kelas-nama-baru">Nama Kelas</label><input id="adm-kelas-nama-baru" class="inp" required value="' + esc(kc.name) + '"></div>' +
+          '<div class="row" style="margin-top:12px"><button class="btn" type="submit">💾 Simpan Nama</button>' +
+          '<button class="btn secondary" type="button" onclick="adminBatalUbahNamaKelas()">Batal</button></div>' +
+        '</form></div>';
+    }
+  }
+  h += '<div class="card"><h3>🏫 Semua Kelas di Perangkat Ini (' + db.classes.length + ')</h3>';
+  if(!db.classes.length){
+    h += '<p class="muted">Belum ada kelas di perangkat ini.</p>';
+  } else {
+    h += db.classes.map(c => {
       const pemilik = c.ownerTeacherId ? db.accounts.find(a => a.id === c.ownerTeacherId) : null;
       const n = db.students.filter(s => s.classId === c.id).length;
       return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(c.name) + '</span>' +
-        '<div class="sub">' + n + ' siswa • Pemilik: ' + (pemilik ? esc(pemilik.email) : '— (dari pendaftaran siswa / tanpa guru)') + '</div></div></div>';
-    }).join('') + '</div>';
+        '<div class="sub">' + n + ' siswa • Wali kelas: ' + (pemilik ? esc(pemilik.email) : '— (kelas lama tanpa guru)') + '</div></div>' +
+        '<div class="icon-btns">' +
+          '<button class="btn secondary small-btn" onclick="adminMulaiUbahNamaKelas(\'' + c.id + '\')">Ubah Nama</button>' +
+          '<button class="btn danger small-btn" onclick="adminHapusKelas(\'' + c.id + '\')">Hapus</button>' +
+        '</div></div>';
+    }).join('');
+  }
+  return h + '</div>';
+}
+function adminBuatKelas(ev){
+  ev.preventDefault();
+  const nama = document.getElementById('adm-kelas-nama').value.trim();
+  const guruId = document.getElementById('adm-kelas-guru').value;
+  if(!nama) return false;
+  if(nama.length > 60){ adminMsg = { type:'err', text:'❌ Nama kelas terlalu panjang (maks. 60 karakter).' }; render(); return false; }
+  if(!guruId){
+    adminMsg = { type:'err', text:'❌ Pilih guru pemilik (wali kelas) terlebih dahulu — setiap kelas wajib memiliki guru pemilik; tidak ada kelas khusus Admin.' };
+    render(); return false;
+  }
+  const guru = db.accounts.find(a => a.id === guruId && a.role === 'guru');
+  if(!guru){ adminMsg = { type:'err', text:'❌ Akun guru pemilik tidak ditemukan.' }; render(); return false; }
+  if(findClassByName(nama, guru.id)){
+    adminMsg = { type:'err', text:'❌ Guru ' + guru.email + ' sudah memiliki kelas bernama "' + nama + '".' };
+    render(); return false;
+  }
+  db.classes.push({ id: newClassId(), name: nama, ownerTeacherId: guru.id });
+  saveDB();
+  adminMsg = { type:'ok', text:'✅ Kelas "' + nama + '" dibuat dengan wali kelas ' + guru.email + '.' };
+  render();
+  return false;
+}
+function adminMulaiUbahNamaKelas(cid){
+  adminKelasEditId = cid;
+  adminMsg = null;
+  adminView = 'kelas';
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function adminBatalUbahNamaKelas(){
+  adminKelasEditId = null;
+  adminMsg = null;
+  render();
+}
+function adminSimpanNamaKelas(ev){
+  ev.preventDefault();
+  const c = getClass(adminKelasEditId);
+  if(!c) return false;
+  const nama = document.getElementById('adm-kelas-nama-baru').value.trim();
+  if(!nama) return false;
+  if(nama.length > 60){ adminMsg = { type:'err', text:'❌ Nama kelas terlalu panjang (maks. 60 karakter).' }; render(); return false; }
+  const bentrok = db.classes.find(x => x.id !== c.id &&
+    x.name.trim().toLowerCase() === nama.toLowerCase() &&
+    (x.ownerTeacherId || null) === (c.ownerTeacherId || null));
+  if(bentrok){
+    adminMsg = { type:'err', text:'❌ Wali kelas yang sama sudah memiliki kelas lain bernama "' + nama + '".' };
+    render(); return false;
+  }
+  c.name = nama;
+  saveDB();
+  adminKelasEditId = null;
+  adminMsg = { type:'ok', text:'✅ Nama kelas diubah menjadi "' + nama + '".' };
+  render();
+  return false;
+}
+function adminHapusKelas(cid){
+  const c = getClass(cid);
+  if(!c) return;
+  const n = db.students.filter(s => s.classId === cid).length;
+  if(n > 0){
+    // Kelas berisi siswa TIDAK dihapus: pindahkan dulu siswanya.
+    alert('Kelas "' + c.name + '" masih berisi ' + n + ' siswa dan TIDAK dapat dihapus. Pindahkan dulu siswa-siswanya ke kelas lain (atau jadikan "Belum diatur") lewat tombol Atur Kelas pada daftar Semua Siswa.');
+    return;
+  }
+  if(!confirm('Hapus kelas "' + c.name + '"? Kelas ini kosong, jadi tidak ada data siswa yang ikut terhapus.')) return;
+  db.classes = db.classes.filter(x => x.id !== cid);
+  if(adminKelasEditId === cid) adminKelasEditId = null;
+  saveDB();
+  adminMsg = { type:'ok', text:'✅ Kelas "' + c.name + '" dihapus.' };
+  render();
+}
+/* ================= ATUR KELAS SISWA (ADMIN) =================
+   Admin menempatkan setiap siswa ke kelasnya dari Panel Admin. Siswa
+   yang belum ditempatkan (classId null) berstatus "Belum diatur Admin"
+   dan hanya tampil di Panel Admin sebagai antrean penempatan; begitu
+   ditempatkan ke kelas berguru pemilik, siswa itu sepenuhnya menjadi
+   wilayah guru tersebut (identitas, dokumen, ubahan, absensi, rekap) —
+   data siswa TIDAK pernah hanya-di-Admin setelah ditempatkan. */
+function adminMulaiAturKelas(sid){
+  adminAturKelasId = sid;
+  adminMsg = null;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function adminBatalAturKelas(){
+  adminAturKelasId = null;
+  adminMsg = null;
+  render();
+}
+function adminAturKelasHtml(){
+  const st = getStudent(adminAturKelasId);
+  if(!st) return '';
+  const opsi = '<option value="">— Belum diatur (tanpa kelas) —</option>' + db.classes.map(c => {
+    const pemilik = c.ownerTeacherId ? db.accounts.find(a => a.id === c.ownerTeacherId) : null;
+    return '<option value="' + c.id + '"' + (st.classId === c.id ? ' selected' : '') + '>' +
+      esc(c.name) + ' — wali kelas: ' + (pemilik ? esc(pemilik.email) : '(kelas lama tanpa guru)') + '</option>';
+  }).join('');
+  return '<div class="card"><h3>🏫 Atur Kelas — ' + esc(st.name) + '</h3>' +
+    '<p class="muted" style="margin-top:0">Kelas siswa ini saat ini: <b>' + esc(className(st.classId)) + '</b>. Pilih kelas tujuan lalu simpan. Siswa yang ditempatkan ke sebuah kelas sepenuhnya terlihat dan terkelola oleh guru wali kelas tersebut.</p>' +
+    '<form onsubmit="return adminSimpanAturKelas(event)">' +
+      '<div class="field"><label for="adm-atur-kelas">Kelas</label><select id="adm-atur-kelas" class="inp">' + opsi + '</select></div>' +
+      '<div class="row" style="margin-top:12px"><button class="btn" type="submit">💾 Simpan Penempatan</button>' +
+      '<button class="btn secondary" type="button" onclick="adminBatalAturKelas()">Batal</button></div>' +
+    '</form></div>';
+}
+function adminSimpanAturKelas(ev){
+  ev.preventDefault();
+  const st = getStudent(adminAturKelasId);
+  if(!st) return false;
+  const v = document.getElementById('adm-atur-kelas').value;
+  st.classId = v || null;
+  saveDB();
+  adminAturKelasId = null;
+  adminMsg = { type:'ok', text:'✅ Kelas ' + st.name + ' diatur menjadi: ' + className(st.classId) + '.' };
+  render();
+  return false;
 }
 function adminRekapHtml(){
   const ym = adminRekapMonth;
