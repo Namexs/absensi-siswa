@@ -125,7 +125,13 @@ Batasan yang tersisa (jujur apa adanya):
 - Tidak ada akun yang bisa dipulihkan dari server — lupa pasangan
   email+nomor HP berarti data di perangkat itu tidak bisa dibuka lagi
   lewat akun tersebut (admin masih dapat melihat datanya di perangkat
-  yang sama).
+  yang sama). Pemulihannya bersifat manual oleh Admin: tautan
+  "Lupa kata sandi?" pada formulir masuk guru & siswa menjelaskan bahwa
+  hanya Admin yang dapat mengatur ulang data masuk, dan dari Panel Admin
+  tombol **Atur Ulang Data Masuk** pada setiap akun guru/siswa mengganti
+  email dan/atau nomor HP akun itu (email baru tidak boleh sama dengan
+  akun lain). Setelah diatur ulang, pemilik masuk dengan data yang baru.
+  Tidak ada OTP dan tidak ada pengiriman email/SMS di aplikasi ini.
 
 ## Cara data disimpan
 

@@ -1446,6 +1446,25 @@ function newAccountId(){
 function normPhone(p){ return String(p || '').replace(/\D/g, ''); }
 function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim()); }
 
+/* ============================== LUPA KATA SANDI ==============================
+   Aplikasi ini tidak memakai kata sandi terpisah dan tidak mengirim kode
+   OTP (tidak ada layanan email/SMS): data masuk adalah pasangan email +
+   nomor HP. Bila pengguna lupa pasangan itu, HANYA Admin yang dapat
+   mengatur ulang data masuknya dari Panel Admin. Tautan "Lupa kata sandi?"
+   pada formulir masuk guru & siswa menampilkan penjelasan ini. */
+const TEKS_LUPA_SANDI = 'Di aplikasi ini Anda masuk dengan pasangan <b>email + nomor HP</b> — tidak ada kata sandi terpisah dan tidak ada pengiriman kode OTP. ' +
+  'Bila Anda lupa email atau nomor HP yang terdaftar, data masuk Anda <b>hanya dapat diatur ulang oleh Admin</b>. ' +
+  'Silakan hubungi Admin aplikasi untuk meminta pengaturan ulang data masuk. Setelah diatur ulang oleh Admin, masuklah dengan email dan nomor HP yang baru.';
+function toggleLupa(k){
+  const d = document.getElementById('lupa-' + k);
+  if(d) d.classList.toggle('show');
+  return false;
+}
+function lupaSandiHtml(k){
+  return '<p class="small" style="margin:12px 0 0"><a href="#" onclick="return toggleLupa(\'' + k + '\')">Lupa kata sandi?</a></p>' +
+    '<div id="lupa-' + k + '" class="banner info" style="margin:10px 0 0">' + TEKS_LUPA_SANDI + '</div>';
+}
+
 /* ============================== ANTI-DUPLIKAT ==============================
    Aturan pemilik aplikasi (versi final): sebuah catatan hanya ditolak bila
    SELURUH data identitasnya persis sama dengan siswa yang sudah ada — nama,
@@ -1545,7 +1564,7 @@ function renderGerbangAkun(el){
         '<div class="field"><label for="m-email">Email</label><input id="m-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="username"></div>' +
         '<div class="field"><label for="m-hp">Nomor HP</label><input id="m-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel"></div>' +
         '<button class="btn block" type="submit">Masuk</button>' +
-      '</form></div>' +
+      '</form>' + lupaSandiHtml('siswa') + '</div>' +
     '<div class="card"><h3>Belum punya akun? Daftar Akun</h3>' +
       '<p class="muted" style="margin-top:0">Buat akun dengan email dan nomor HP. Akun tersimpan hanya di perangkat ini (tanpa server) dan dipakai untuk membuka QR pribadi siswa. Satu akun hanya dapat mendaftarkan satu siswa.</p>' +
       '<form onsubmit="return submitDaftarAkun(event)">' +
@@ -1629,7 +1648,7 @@ function renderGerbangGuru(el){
         '<div class="field"><label for="gm-email">Email</label><input id="gm-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="username"></div>' +
         '<div class="field"><label for="gm-hp">Nomor HP</label><input id="gm-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel"></div>' +
         '<button class="btn block" type="submit">Masuk sebagai Guru</button>' +
-      '</form></div>' +
+      '</form>' + lupaSandiHtml('guru') + '</div>' +
     '<div class="card"><h3>Belum punya akun guru? Daftar Akun Guru</h3>' +
       '<p class="muted" style="margin-top:0">Buat akun guru dengan email dan nomor HP. Akun tersimpan hanya di perangkat ini (tanpa server). Kelas dan siswa yang Anda buat menjadi milik akun Anda dan tidak terlihat oleh guru lain di perangkat yang sama.</p>' +
       '<form onsubmit="return submitDaftarAkunGuru(event)">' +
@@ -2079,6 +2098,8 @@ let adminGuruId = null;
 let adminEditId = null;
 let adminUbahKeep = null;
 let adminRekapMonth = todayStr().slice(0, 7);
+let adminResetId = null;     // akun yang sedang diatur ulang data masuknya oleh admin
+let adminResetKeep = null;   // nilai formulir atur ulang (dipertahankan bila ditolak)
 
 function renderAdminMode(){
   const el = document.getElementById('admin-view');
@@ -2120,8 +2141,80 @@ function keluarAdmin(){
   adminGuruId = null;
   adminEditId = null;
   adminUbahKeep = null;
+  adminResetId = null;
+  adminResetKeep = null;
   dokAdmin = null;
   render();
+}
+/* ================= ATUR ULANG DATA MASUK OLEH ADMIN =================
+   Satu-satunya jalan memulihkan akun yang pemiliknya lupa data masuk:
+   admin mengganti email dan/atau nomor HP akun itu dari Panel Admin.
+   (Akun guru/siswa tidak memiliki kata sandi terpisah — pasangan email +
+   nomor HP itulah kredensial masuknya, jadi inilah bentuk "atur ulang
+   kata sandi" di aplikasi ini. Tidak ada OTP dan tidak ada pengiriman
+   email/SMS.) Email baru tidak boleh sama dengan email akun lain —
+   pemeriksaan duplikat akun yang sama seperti saat pendaftaran. */
+function adminMulaiReset(id){
+  adminResetId = id;
+  adminResetKeep = null;
+  adminMsg = null;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function adminBatalReset(){
+  adminResetId = null;
+  adminResetKeep = null;
+  adminMsg = null;
+  render();
+}
+function adminResetHtml(){
+  const acc = db.accounts.find(a => a.id === adminResetId);
+  if(!acc) return '';
+  const kv = adminResetKeep || { email: acc.email, phone: acc.phone };
+  return '<div class="card"><h3>🔑 Atur Ulang Data Masuk — Akun ' + (acc.role === 'guru' ? 'Guru' : 'Siswa') + '</h3>' +
+    '<p class="muted" style="margin-top:0">Akun ini sekarang masuk dengan email <b>' + esc(acc.email) + '</b> dan nomor HP <b>' + esc(acc.phone) + '</b>. ' +
+    'Karena data masuk adalah pasangan email + nomor HP, mengatur ulang data masuk berarti mengganti email dan/atau nomor HP akun ini. ' +
+    'Setelah disimpan, pemilik akun masuk dengan data yang baru — data lama tidak berlaku lagi.</p>' +
+    '<form onsubmit="return submitAdminResetAkun(event)">' +
+      '<div class="field"><label for="rst-email">Email Baru</label><input id="rst-email" type="email" class="inp" required autocomplete="off" value="' + esc(kv.email) + '"></div>' +
+      '<div class="field"><label for="rst-hp">Nomor HP Baru</label><input id="rst-hp" type="tel" class="inp" required autocomplete="off" value="' + esc(kv.phone) + '"></div>' +
+      '<div class="row" style="margin-top:14px"><button class="btn" type="submit">💾 Simpan Data Masuk Baru</button>' +
+      '<button class="btn secondary" type="button" onclick="adminBatalReset()">Batal</button></div>' +
+    '</form></div>';
+}
+function submitAdminResetAkun(ev){
+  ev.preventDefault();
+  const acc = db.accounts.find(a => a.id === adminResetId);
+  if(!acc) return false;
+  const email = document.getElementById('rst-email').value.trim();
+  const phone = document.getElementById('rst-hp').value.trim();
+  adminResetKeep = { email: email, phone: phone };
+  if(!validEmail(email)){
+    adminMsg = { type:'err', text:'❌ Format email belum benar. Periksa kembali email baru untuk akun ini.' };
+    render(); return false;
+  }
+  if(normPhone(phone).length < 9){
+    adminMsg = { type:'err', text:'❌ Nomor HP terlalu pendek. Isi nomor HP yang benar.' };
+    render(); return false;
+  }
+  if(db.accounts.some(a => a.id !== acc.id && a.email.toLowerCase() === email.toLowerCase())){
+    adminMsg = { type:'err', text:'❌ Email ini sudah dipakai akun lain di perangkat ini. Gunakan email lain agar akun tidak tertukar.' };
+    render(); return false;
+  }
+  if(acc.email.toLowerCase() === email.toLowerCase() && normPhone(acc.phone) === normPhone(phone)){
+    adminResetId = null;
+    adminResetKeep = null;
+    adminMsg = { type:'info', text:'Tidak ada perubahan — email dan nomor HP akun ini masih sama seperti sebelumnya.' };
+    render(); return false;
+  }
+  acc.email = email;
+  acc.phone = phone;
+  saveDB();
+  adminResetId = null;
+  adminResetKeep = null;
+  adminMsg = { type:'ok', text:'✅ Data masuk akun ' + email + ' berhasil diatur ulang. Pemilik akun sekarang masuk dengan email dan nomor HP yang baru.' };
+  render();
+  return false;
 }
 function adminNav(v){
   adminView = v;
@@ -2148,7 +2241,8 @@ function renderPanelAdmin(el){
       '<button class="btn secondary small-btn" onclick="keluarAdmin()">Keluar Admin</button></div>' +
     '<div class="tabs">' + navBtn('ringkasan', '📋 Ringkasan') + navBtn('guru', '👩‍🏫 Akun Guru') +
       navBtn('siswa', '👥 Semua Siswa') + navBtn('kelas', '🏫 Semua Kelas') + navBtn('rekap', '📊 Rekap Semua') + '</div>' +
-    (adminMsg && adminView !== 'siswa' ? '<div class="banner show ' + adminMsg.type + '">' + esc(adminMsg.text) + '</div>' : '') +
+    (adminMsg && (adminView !== 'siswa' || adminResetId) ? '<div class="banner show ' + adminMsg.type + '">' + esc(adminMsg.text) + '</div>' : '') +
+    (adminResetId ? adminResetHtml() : '') +
     body +
     (adminView === 'ringkasan' ? eksporImporCardHtml('admin') : '');
 }
@@ -2170,16 +2264,19 @@ function adminRingkasanHtml(guruAccs, siswaAccs){
       (guruAccs.length ? guruAccs.map(a => {
         return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(a.email) + '</span>' +
           '<div class="sub">HP ' + esc(a.phone) + ' • ' + guruClasses(a).length + ' kelas • ' + guruStudents(a).length + ' siswa</div></div>' +
-          '<div class="icon-btns"><button class="btn small-btn" onclick="adminBukaGuru(\'' + a.id + '\')">Buka Wilayah Guru</button></div></div>';
+          '<div class="icon-btns"><button class="btn small-btn" onclick="adminBukaGuru(\'' + a.id + '\')">Buka Wilayah Guru</button>' +
+          '<button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + a.id + '\')">Atur Ulang Data Masuk</button></div></div>';
       }).join('') : '<p class="muted">Belum ada akun guru yang mendaftar di perangkat ini.</p>') + '</div>' +
     '<div class="card"><h3>🎓 Akun Siswa Terdaftar</h3>' +
       (siswaAccs.length ? siswaAccs.map(a => {
         const st = studentOfAccount(a.id);
         return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(a.email) + '</span>' +
           '<div class="sub">HP ' + esc(a.phone) + (st ? ' • Siswa: ' + esc(st.name) + ' (' + esc(className(st.classId)) + ')' : ' • Belum mendaftarkan siswa') + '</div></div>' +
-          (st ? '<div class="icon-btns"><button class="btn small-btn" onclick="openQRModal(\'' + st.id + '\')">QR Siswa</button>' +
+          '<div class="icon-btns">' +
+          (st ? '<button class="btn small-btn" onclick="openQRModal(\'' + st.id + '\')">QR Siswa</button>' +
             '<button class="btn secondary small-btn" onclick="openDetailSiswa(\'' + st.id + '\')">Detail</button>' +
-            '<button class="btn secondary small-btn" onclick="adminMulaiUbah(\'' + st.id + '\')">Ubah</button></div>' : '') + '</div>';
+            '<button class="btn secondary small-btn" onclick="adminMulaiUbah(\'' + st.id + '\')">Ubah</button>' : '') +
+            '<button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + a.id + '\')">Atur Ulang Data Masuk</button></div></div>';
       }).join('') : '<p class="muted">Belum ada akun siswa yang mendaftar di perangkat ini.</p>') + '</div>';
 }
 function barisSiswaAdmin(s){
@@ -2206,7 +2303,8 @@ function adminGuruHtml(guruAccs){
     '<div class="field"><label for="adm-guru-pilih">Pilih Akun Guru</label><select id="adm-guru-pilih" class="inp" onchange="adminBukaGuru(this.value)">' +
     guruAccs.map(a => '<option value="' + a.id + '"' + (a.id === acc.id ? ' selected' : '') + '>' + esc(a.email) + ' — ' + esc(a.phone) + '</option>').join('') +
     '</select></div>' +
-    '<p class="muted" style="margin:0">Guru ini memiliki <b>' + kelas.length + ' kelas</b> dan <b>' + murid.length + ' siswa</b>. Hari ini: ' + tercatat + ' tercatat, ' + hadir + ' hadir. Sebagai admin Anda dapat melihat dan mengubah data mereka dari sini.</p></div>';
+    '<p class="muted" style="margin:0">Guru ini memiliki <b>' + kelas.length + ' kelas</b> dan <b>' + murid.length + ' siswa</b>. Hari ini: ' + tercatat + ' tercatat, ' + hadir + ' hadir. Sebagai admin Anda dapat melihat dan mengubah data mereka dari sini.</p>' +
+    '<div style="margin-top:12px"><button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + acc.id + '\')">🔑 Atur Ulang Data Masuk Guru Ini</button></div></div>';
   if(!kelas.length) h += '<div class="card"><p class="muted">Guru ini belum membuat kelas.</p></div>';
   kelas.forEach(c => {
     const list = murid.filter(s => s.classId === c.id).slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
