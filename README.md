@@ -81,11 +81,25 @@ pendaftaran akun ganda/sembarangan:
 - Portal siswa memerlukan **akun siswa** yang didaftarkan sendiri dengan
   **email, nomor HP, kata sandi, dan Token Siswa (5 karakter)** dari Admin;
   masuk memakai **email + kata sandi**.
-- Setelah masuk, pengguna mendaftarkan **satu siswa** (satu akun = satu
+- **Daftar akun dan pengisian identitas adalah dua langkah terpisah.**
+  Setelah daftar/masuk, siswa mendarat di beranda portalnya — formulir
+  identitas **tidak** disodorkan otomatis. Selama data belum diisi, portal
+  menampilkan pemberitahuan ramah dan tombol **Isi Data Siswa**; siswa
+  bebas keluar dan masuk lagi kapan pun, dan masuknya tidak pernah
+  terhalang oleh identitas yang belum lengkap. Mendaftarkan ulang dengan
+  email yang sama ditolak dengan pesan jelas *"Email sudah terdaftar —
+  silakan masuk"*.
+- Lewat tombol itu pengguna mendaftarkan **satu siswa** (satu akun = satu
   pendaftaran; formulir terkunci setelahnya) dengan **identitas lengkap**:
   nama lengkap, NISN, tempat lahir, tanggal lahir, nama ayah, nama ibu,
   anak ke berapa, alamat, NIK, email, nomor HP, kelas, dan jenis kelamin —
   plus unggahan foto **Kartu Keluarga (KK), KTP ayah, dan KTP ibu**.
+- **QR pribadi hanya ada setelah identitas lengkap tersimpan.** Selama
+  data siswa belum diisi dan lolos validasi, portal siswa tidak
+  menampilkan QR apa pun; QR muncul begitu data siswa tersimpan.
+- Pembuatan akun bersifat **atomik**: kata sandi di-hash selesai lebih
+  dulu, baru akun ditulis sekali jadi — tidak ada akun setengah jadi
+  yang tersimpan tanpa kata sandi yang dapat dipakai.
 - Kesalahan ketik dapat diperbaiki lewat menu **Edit Identitas** oleh
   pemilik akun; guru juga dapat mengubah data dari mode Guru, dan admin
   dapat mengubah data siswa mana pun dari panel admin.

@@ -392,6 +392,7 @@ function setMode(m){
   try{ localStorage.setItem(MODE_KEY, m); }catch(e){}
   if(m !== 'guru') stopCamera();
   editMine = false;
+  isiDataSiswa = false;
   akunMsg = null;
   guruMsg = null;
   adminMsg = null;
@@ -1451,6 +1452,7 @@ let sessionAccountId = null;
 try{ sessionAccountId = localStorage.getItem(AKUN_KEY) || null; }catch(e){}
 let akunMsg = null;      // {type, text} pesan di mode Siswa
 let editMine = false;    // sedang membuka menu Edit Identitas
+let isiDataSiswa = false; // formulir Isi Data Siswa dibuka atas kehendak siswa dari portalnya (BUKAN paksaan saat masuk)
 let daftarKeep = null;   // nilai formulir pendaftaran siswa (dipertahankan bila ditolak)
 let ubahKeep = null;     // nilai formulir Edit Identitas (dipertahankan bila ditolak)
 let regAkunKeep = null;  // nilai formulir daftar akun siswa (dipertahankan bila ditolak)
@@ -1492,7 +1494,10 @@ function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '')
    Karena hash bersifat asinkron, handler masuk/daftar/atur-ulang kini
    berbentuk async (preventDefault tetap dipanggil pertama, secara sinkron).
    Bila WebCrypto tidak tersedia (konteks tidak aman), dipakai hash cadangan
-   FNV-1a/cyrb yang diulang — ditandai awalan 'f' pada hash tersimpan.
+   FNV-1a/cyrb yang diulang — ditandai awalan 'f' DAN panjang 33 karakter
+   pada hash tersimpan (hash SHA-256 selalu 64 karakter; kedua format
+   dibedakan dari panjangnya, bukan dari huruf pertama saja — lihat
+   catatan akar bug di cocokSandi).
    CATATAN JUJUR: hash di sisi klien pada situs statis publik hanyalah
    gerbang ringan — bukan pengaman sekelas server. */
 function hexDariBytes(bytes){
@@ -1534,11 +1539,26 @@ async function buatKredensial(sandi){
 async function cocokSandi(acc, sandi){
   if(!acc || !acc.passHash || !acc.passSalt) return false;
   const bahan = acc.passSalt + '::' + sandi;
-  if(acc.passHash.charAt(0) === 'f') return ('f' + hashCadangan(bahan)) === acc.passHash;
+  const tersimpan = String(acc.passHash);
+  /* PENTING — akar bug "akun terkunci permanen" (dilaporkan pemilik
+     18 Nov 2026): kedua format hash TIDAK BOLEH dibedakan hanya dari
+     huruf pertamanya. Hash cadangan selalu 33 karakter ('f' + 32 heks),
+     sedangkan hash SHA-256 selalu 64 karakter heks — dan cuplikan
+     SHA-256 yang sah bisa saja diawali huruf 'f' (peluang ±1 dari 16
+     akun). Pemeriksaan lama yang hanya melihat charAt(0) === 'f'
+     mengirim akun-akun itu ke jalur cadangan, sehingga kata sandi yang
+     BENAR pun selalu ditolak dan akun tidak pernah bisa masuk lagi,
+     sementara daftar ulang tertolak karena email sudah terdaftar.
+     Karena itu format kini dibedakan dari PANJANG hash, dan akun lama
+     yang sudah tersimpan dengan hash SHA-256 berawalan 'f' otomatis
+     pulih — datanya tidak perlu diubah. */
+  if(tersimpan.length !== 64 && tersimpan.charAt(0) === 'f'){
+    return ('f' + hashCadangan(bahan)) === tersimpan;
+  }
   if(window.crypto && crypto.subtle){
     try{
       const dig = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(bahan));
-      return hexDariBytes(new Uint8Array(dig)) === acc.passHash;
+      return hexDariBytes(new Uint8Array(dig)) === tersimpan;
     }catch(e){ return false; }
   }
   return false;
@@ -1749,8 +1769,47 @@ function renderSiswaMode(){
   const acc = currentAccount();
   if(!acc || acc.role !== 'siswa'){ renderGerbangAkun(el); return; }
   const me = studentOfAccount(acc.id);
-  if(!me){ renderDaftarSiswa(el, acc); return; }
+  if(!me){
+    /* ALUR DUA LANGKAH (aturan pemilik): daftar akun dan pengisian
+       identitas adalah dua langkah terpisah. Siswa yang baru masuk
+       mendarat di BERANDA PORTAL — formulir identitas TIDAK disodorkan
+       otomatis; ia membukanya sendiri lewat tombol "Isi Data Siswa"
+       kapan pun ia siap. Selama identitas belum terisi, portal tidak
+       menampilkan QR apa pun dan masuk/keluar tidak terhalang. */
+    if(isiDataSiswa){ renderDaftarSiswa(el, acc); return; }
+    renderPortalSiswaAwal(el, acc);
+    return;
+  }
   renderPortalSiswa(el, acc, me);
+}
+/* Beranda portal siswa untuk akun yang datanya BELUM diisi: pemberitahuan
+   ramah + jalan mengisi data. Sengaja TANPA QR — QR pribadi hanya ada
+   setelah identitas lengkap tersimpan (aturan pemilik). */
+function renderPortalSiswaAwal(el, acc){
+  el.innerHTML =
+    akunBarHtml(acc) +
+    akunBannerHtml() +
+    '<div class="card"><h2>🎉 Selamat Datang!</h2>' +
+      '<p style="margin-top:0">Akun Anda <b>sudah aktif</b> dan Anda sudah masuk ke Portal Siswa.</p>' +
+      '<div class="banner info show">📝 <b>Data siswa Anda belum diisi.</b> Isi kapan saja Anda siap lewat tombol di bawah — tidak harus sekarang. Anda tetap bebas keluar dan masuk lagi kapan pun; masuk Anda <b>tidak</b> terhalang oleh data yang belum lengkap.</div>' +
+      '<p class="muted">Setelah data siswa tersimpan, QR pribadi Anda muncul di portal ini untuk ditunjukkan kepada guru saat absensi. <b>Selama data belum lengkap, QR belum ada.</b> Yang perlu disiapkan: nama lengkap, NISN, tempat &amp; tanggal lahir, nama ayah dan ibu, anak ke berapa, NIK, alamat, email, nomor HP, dan kelas — serta foto KK, KTP ayah, dan KTP ibu bila diminta sekolah.</p>' +
+      '<button class="btn block" onclick="bukaIsiDataSiswa()">📝 Isi Data Siswa</button>' +
+    '</div>';
+}
+function bukaIsiDataSiswa(){
+  isiDataSiswa = true;
+  akunMsg = null;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function tutupIsiDataSiswa(){
+  // Simpan dulu isian yang sudah diketik sebagai draf agar tidak hilang.
+  const f = document.getElementById('d-nama');
+  if(f) daftarKeep = bacaIdentitas('d');
+  isiDataSiswa = false;
+  akunMsg = null;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function akunBannerHtml(){
   return akunMsg ? '<div class="banner show ' + akunMsg.type + '">' + esc(akunMsg.text) + '</div>' : '';
@@ -1816,21 +1875,44 @@ async function submitDaftarAkun(ev){
     akunMsg = { type:'err', text:gToken };
     render(); return false;
   }
+  const PESAN_DUP = 'Email sudah terdaftar — silakan masuk dengan email dan kata sandi Anda lewat formulir Masuk di atas. Bila lupa kata sandi, hubungi Admin untuk mengatur ulang kata sandi Anda.';
   if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
-    akunMsg = { type:'err', text:'Email ini sudah terdaftar di perangkat ini. Silakan masuk dengan email dan kata sandi Anda.' };
+    akunMsg = { type:'err', text:PESAN_DUP };
+    render(); return false;
+  }
+  /* PEMBUATAN AKUN HARUS ATOMIK: hash kata sandi dihitung SELESAI lebih
+     dulu, baru akun ditulis sekali jadi — tidak pernah ada akun setengah
+     jadi (tersimpan tanpa hash yang dapat dipakai) bila aplikasi ditutup
+     di tengah proses. Setelah penantian hash selesai, email dan token
+     diperiksa ULANG (antisipasi ketuk ganda), lalu akun + hangusnya
+     token disimpan dalam satu penulisan; bila penyimpanan gagal (kuota
+     penuh), akun dan token dibatalkan bersama. */
+  const kred = await buatKredensial(sandi);
+  if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
+    akunMsg = { type:'err', text:PESAN_DUP };
+    render(); return false;
+  }
+  const gTokenUlang = galatToken(tokenMentah, 'siswa');
+  if(gTokenUlang){
+    akunMsg = { type:'err', text:gTokenUlang };
     render(); return false;
   }
   const token = cariToken(tokenMentah);
-  const kred = await buatKredensial(sandi);
   const acc = { id: newAccountId(), email: email, phone: phone, role: 'siswa', passSalt: kred.passSalt, passHash: kred.passHash, createdAt: new Date().toISOString() };
   db.accounts.push(acc);
   // Token hangus begitu akun berhasil dibuat — satu token, satu akun.
   token.usedBy = acc.id;
   token.usedAt = new Date().toISOString();
+  if(!saveDBStrict()){
+    db.accounts = db.accounts.filter(a => a.id !== acc.id);
+    token.usedBy = null;
+    token.usedAt = null;
+    akunMsg = { type:'err', text:'❌ ' + PESAN_KUOTA };
+    render(); return false;
+  }
   regAkunKeep = null;
-  saveDB();
   setSession(acc);
-  akunMsg = { type:'ok', text:'✅ Akun siswa dibuat dan Anda sudah masuk. Sekarang daftarkan data siswa Anda.' };
+  akunMsg = { type:'ok', text:'✅ Akun siswa berhasil dibuat dan Anda sudah masuk. Data siswa belum diisi — tidak apa-apa: isi kapan saja Anda siap lewat tombol "Isi Data Siswa" di portal Anda. Anda bebas keluar dan masuk lagi kapan pun; QR pribadi Anda muncul setelah data siswa tersimpan.' };
   render();
   return false;
 }
@@ -1871,6 +1953,7 @@ function keluarAkun(){
   migrasiId = null;
   migrasiMsg = null;
   editMine = false;
+  isiDataSiswa = false;
   ubahKeep = null;
   daftarKeep = null;
   dokDaftar = null;
@@ -1944,19 +2027,39 @@ async function submitDaftarAkunGuru(ev){
     guruMsg = { type:'err', text:gToken };
     render(); return false;
   }
+  const PESAN_DUP = 'Email sudah terdaftar — silakan masuk dengan email dan kata sandi Anda lewat formulir Masuk di atas. Bila lupa kata sandi, hubungi Admin untuk mengatur ulang kata sandi Anda.';
   if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
-    guruMsg = { type:'err', text:'Email ini sudah terdaftar di perangkat ini. Silakan masuk dengan email dan kata sandi Anda.' };
+    guruMsg = { type:'err', text:PESAN_DUP };
+    render(); return false;
+  }
+  /* Sama seperti pendaftaran siswa: pembuatan akun atomik — hash
+     dihitung selesai lebih dulu, email + token diperiksa ulang setelah
+     penantian, dan akun + hangusnya token disimpan dalam satu
+     penulisan dengan pembatalan bersama bila penyimpanan gagal. */
+  const kred = await buatKredensial(sandi);
+  if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
+    guruMsg = { type:'err', text:PESAN_DUP };
+    render(); return false;
+  }
+  const gTokenUlang = galatToken(tokenMentah, 'guru');
+  if(gTokenUlang){
+    guruMsg = { type:'err', text:gTokenUlang };
     render(); return false;
   }
   const token = cariToken(tokenMentah);
-  const kred = await buatKredensial(sandi);
   const acc = { id: newAccountId(), email: email, phone: phone, role: 'guru', passSalt: kred.passSalt, passHash: kred.passHash, createdAt: new Date().toISOString() };
   db.accounts.push(acc);
   // Token hangus begitu akun berhasil dibuat — satu token, satu akun.
   token.usedBy = acc.id;
   token.usedAt = new Date().toISOString();
+  if(!saveDBStrict()){
+    db.accounts = db.accounts.filter(a => a.id !== acc.id);
+    token.usedBy = null;
+    token.usedAt = null;
+    guruMsg = { type:'err', text:'❌ ' + PESAN_KUOTA };
+    render(); return false;
+  }
   regGuruKeep = null;
-  saveDB();
   setSession(acc);
   guruMsg = null;
   akunMsg = null;
@@ -2192,13 +2295,14 @@ function renderDaftarSiswa(el, acc){
   if(!dokDaftar) dokDaftar = dokKosong();
   el.innerHTML =
     akunBarHtml(acc) +
-    '<div class="card"><h2>Daftarkan Data Siswa</h2>' +
-      '<p class="muted" style="margin-top:0">Satu akun hanya dapat mendaftarkan <b>satu siswa</b>. Setelah terdaftar, formulir ini terkunci — bila ada kesalahan ketik, perbaiki lewat menu <b>Edit Identitas</b>. Isi identitas selengkapnya; pendaftaran hanya ditolak bila <b>seluruh</b> identitasnya persis sama dengan siswa yang sudah terdaftar.</p>' +
+    '<div class="card"><h2>Isi Data Siswa</h2>' +
+      '<p class="muted" style="margin-top:0">Satu akun hanya dapat mendaftarkan <b>satu siswa</b>. Setelah data tersimpan, formulir ini terkunci — bila ada kesalahan ketik, perbaiki lewat menu <b>Edit Identitas</b> — dan QR pribadi Anda langsung muncul. Isi identitas selengkapnya; pendaftaran hanya ditolak bila <b>seluruh</b> identitasnya persis sama dengan siswa yang sudah terdaftar. Bila belum siap, kembali dulu saja — isian yang sudah Anda ketik tersimpan sebagai draf di halaman ini.</p>' +
       akunBannerHtml() +
       '<form onsubmit="return submitDaftar(event)">' +
         identFieldsHtml('d', kv) +
         dokFieldsHtml('daftar', dokDaftar) +
-        '<button class="btn block" type="submit" style="margin-top:14px">Daftarkan Siswa &amp; Buat QR</button>' +
+        '<button class="btn block" type="submit" style="margin-top:14px">Simpan Data Siswa &amp; Buat QR</button>' +
+        '<button class="btn secondary block" type="button" style="margin-top:10px" onclick="tutupIsiDataSiswa()">← Nanti Saja — Kembali ke Portal</button>' +
       '</form></div>';
 }
 function submitDaftar(ev){
@@ -2244,8 +2348,9 @@ function submitDaftar(ev){
   }
   daftarKeep = null;
   dokDaftar = null;
+  isiDataSiswa = false;
   setSession(acc);
-  akunMsg = { type:'ok', text:'✅ Pendaftaran berhasil. QR pribadi siswa sudah siap di bawah.' };
+  akunMsg = { type:'ok', text:'✅ Data siswa berhasil disimpan. QR pribadi siswa sudah siap di bawah.' };
   render();
   return false;
 }
