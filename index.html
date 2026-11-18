@@ -1,0 +1,2346 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; worker-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'">
+<title>Absensi Siswa</title>
+<meta name="description" content="Aplikasi absensi siswa dengan QR code: absensi harian, pindai QR, dan rekap kehadiran.">
+<meta name="theme-color" content="#14532d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  :root{
+    --green:#14532d; --green2:#166534; --accent:#16a34a;
+    --bg:#f3f6f3; --card:#ffffff; --ink:#1f2937; --muted:#6b7280; --line:#e2e8f0;
+    --sakit:#d97706; --izin:#2563eb; --alpa:#dc2626;
+  }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-text-size-adjust:100%;
+  }
+  header{
+    background:var(--green); color:#fff; padding:14px 16px;
+    position:sticky; top:0; z-index:30; box-shadow:0 2px 10px rgba(0,0,0,.18);
+  }
+  .header-in{ max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .brand{ font-weight:800; font-size:20px; display:flex; align-items:center; gap:9px; }
+  .brand .logo{ width:34px; height:34px; border-radius:9px; background:#fff; display:flex; align-items:center; justify-content:center; }
+  .brand .logo img{ width:26px; height:26px; }
+  .mode-toggle{ display:flex; background:rgba(255,255,255,.16); border-radius:999px; padding:3px; }
+  .mode-toggle button{
+    border:0; background:transparent; color:#fff; padding:8px 20px; border-radius:999px;
+    font-weight:700; font-family:inherit; font-size:15px; cursor:pointer;
+  }
+  .mode-toggle button.active{ background:#fff; color:var(--green); }
+  main{ max-width:980px; margin:0 auto; padding:16px 16px 40px; }
+  footer{ max-width:980px; margin:0 auto; padding:0 16px 28px; color:var(--muted); font-size:13px; text-align:center; }
+
+  .tabs{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 8px; margin-bottom:12px; scrollbar-width:thin; }
+  .tabs button{
+    border:1.5px solid var(--green2); background:#fff; color:var(--green);
+    padding:9px 16px; border-radius:999px; font-weight:700; font-family:inherit; font-size:14px;
+    cursor:pointer; white-space:nowrap; flex:0 0 auto;
+  }
+  .tabs button.active{ background:var(--green); color:#fff; }
+
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:16px; margin-bottom:14px; box-shadow:0 1px 3px rgba(16,24,40,.05);
+  }
+  .card h2{ margin:0 0 6px; font-size:18px; }
+  .card h3{ margin:0 0 8px; font-size:16px; }
+  .muted{ color:var(--muted); }
+  .small{ font-size:13px; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .row > *{ flex:1 1 160px; }
+  .field{ margin-bottom:12px; }
+  .field label{ display:block; font-weight:600; font-size:14px; margin-bottom:5px; }
+  .inp, select.inp, textarea.inp{
+    width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:10px;
+    font:inherit; font-size:15px; background:#fff; color:var(--ink);
+  }
+  .inp:focus{ outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+  .btn{
+    background:var(--green2); color:#fff; border:0; padding:11px 18px; border-radius:10px;
+    font-weight:700; font-family:inherit; font-size:15px; cursor:pointer; display:inline-block; text-align:center;
+  }
+  .btn:hover{ background:var(--green); }
+  .btn.secondary{ background:#fff; color:var(--green); border:1.5px solid var(--green2); }
+  .btn.secondary:hover{ background:#f0fdf4; }
+  .btn.danger{ background:#fff; color:var(--alpa); border:1.5px solid #fca5a5; }
+  .btn.small-btn{ padding:7px 12px; font-size:13px; border-radius:8px; }
+  .btn.block{ width:100%; }
+
+  .stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; }
+  .stat{ border-radius:12px; padding:14px; text-align:center; border:1px solid var(--line); background:#f8fafc; }
+  .stat .num{ font-size:28px; font-weight:800; line-height:1.1; }
+  .stat .lbl{ font-size:13px; font-weight:600; color:var(--muted); }
+  .stat.hadir{ background:#f0fdf4; } .stat.hadir .num{ color:var(--accent); }
+  .stat.sakit .num{ color:var(--sakit); } .stat.izin .num{ color:var(--izin); } .stat.alpa .num{ color:var(--alpa); }
+
+  .progress{ height:10px; background:#e5e7eb; border-radius:999px; overflow:hidden; }
+  .progress > div{ height:100%; background:var(--accent); border-radius:999px; }
+  .class-progress{ margin-bottom:12px; }
+  .class-progress .cp-head{ display:flex; justify-content:space-between; font-size:14px; margin-bottom:5px; gap:8px; }
+
+  .banner{ padding:12px 14px; border-radius:10px; margin-bottom:12px; font-weight:600; font-size:15px; display:none; }
+  .banner.show{ display:block; }
+  .banner.ok{ background:#dcfce7; color:#14532d; border:1px solid #86efac; }
+  .banner.err{ background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; }
+  .banner.info{ background:#dbeafe; color:#1e3a8a; border:1px solid #93c5fd; }
+
+  .student-row{
+    display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--line);
+    flex-wrap:wrap;
+  }
+  .student-row:last-child{ border-bottom:0; }
+  .student-info{ flex:1 1 150px; min-width:0; }
+  .student-info .nm{ font-weight:700; overflow-wrap:anywhere; }
+  .student-info .sub{ font-size:13px; color:var(--muted); }
+  .chip{
+    display:inline-block; font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:999px;
+    background:#dcfce7; color:#14532d; margin-left:6px; vertical-align:middle; white-space:nowrap;
+  }
+  .st-btns{ display:flex; gap:6px; flex:0 0 auto; }
+  .st-btn{
+    min-width:42px; height:42px; padding:0 8px; border-radius:10px; border:2px solid var(--line);
+    background:#fff; font-weight:800; font-family:inherit; font-size:14px; cursor:pointer; color:var(--muted);
+  }
+  .st-btn .lbl-full{ display:none; }
+  .st-btn.active[data-st="Hadir"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .st-btn.active[data-st="Sakit"]{ background:var(--sakit); border-color:var(--sakit); color:#fff; }
+  .st-btn.active[data-st="Izin"]{ background:var(--izin); border-color:var(--izin); color:#fff; }
+  .st-btn.active[data-st="Alpa"]{ background:var(--alpa); border-color:var(--alpa); color:#fff; }
+  @media (min-width:680px){
+    .st-btn{ min-width:74px; }
+    .st-btn .lbl-full{ display:inline; }
+    .st-btn .lbl-short{ display:none; }
+  }
+  .note-inp{ flex:1 1 140px; }
+
+  .icon-btns{ display:flex; gap:6px; flex:0 0 auto; }
+  table{ width:100%; border-collapse:collapse; font-size:14.5px; }
+  th, td{ padding:9px 8px; border-bottom:1px solid var(--line); text-align:left; }
+  th{ font-size:13px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+  td.num, th.num{ text-align:center; }
+  tr.total td{ font-weight:800; background:#f0fdf4; }
+  .table-wrap{ overflow-x:auto; }
+  .status-dot{ display:inline-block; padding:2px 10px; border-radius:999px; color:#fff; font-size:12.5px; font-weight:700; }
+  .status-dot.Hadir{ background:var(--accent); } .status-dot.Sakit{ background:var(--sakit); }
+  .status-dot.Izin{ background:var(--izin); } .status-dot.Alpa{ background:var(--alpa); }
+
+  video.scan-video{ width:100%; max-height:420px; background:#111; border-radius:12px; object-fit:cover; }
+  .qr-big{ text-align:center; }
+  .qr-big canvas{ max-width:78vw; height:auto; border:1px solid var(--line); border-radius:12px; }
+
+  .modal-back{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center;
+    z-index:60; padding:16px;
+  }
+  .modal{ background:#fff; border-radius:16px; padding:22px; max-width:380px; width:100%; text-align:center; max-height:92vh; overflow-y:auto; }
+  .modal canvas{ max-width:100%; height:auto; }
+  .empty{ text-align:center; padding:26px 14px; color:var(--muted); }
+  .empty .big{ font-size:40px; margin-bottom:8px; }
+  .hist-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); }
+  .hist-row:last-child{ border-bottom:0; }
+
+  .doc-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .doc-box{ border:1px dashed #cbd5e1; border-radius:10px; padding:10px; text-align:center; }
+  .doc-box .doc-lbl{ font-weight:700; font-size:13.5px; margin-bottom:6px; }
+  .doc-box img{ max-width:100%; max-height:150px; border-radius:8px; border:1px solid var(--line); }
+  .doc-box .doc-none{ font-size:13px; color:var(--muted); padding:14px 4px; }
+  .doc-view img{ max-width:100%; border-radius:10px; border:1px solid var(--line); }
+  input[type="file"].inp{ padding:8px 10px; font-size:13.5px; }
+  table.ident{ font-size:14.5px; }
+  table.ident td:first-child{ color:var(--muted); font-weight:600; width:42%; }
+  .badge-admin{ display:inline-block; font-size:11.5px; font-weight:800; padding:2px 9px; border-radius:999px; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; margin-left:6px; vertical-align:middle; white-space:nowrap; }
+  .form-sub{ font-weight:800; font-size:14px; margin:16px 0 8px; color:var(--green); }
+
+  #print-area{ display:none; }
+  @media print{
+    #app{ display:none !important; }
+    #print-area{ display:grid !important; grid-template-columns:repeat(3,1fr); gap:12px; padding:10px; }
+    .qr-card{ border:1.5px dashed #888; border-radius:10px; padding:12px 8px; text-align:center; page-break-inside:avoid; }
+    .qr-card canvas{ max-width:100%; height:auto; }
+    .qr-card .qc-name{ font-weight:800; margin-top:6px; font-size:14px; }
+    .qr-card .qc-sub{ font-size:12px; color:#444; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="header-in">
+      <div class="brand"><span class="logo"><img src="icon-192.png" alt=""></span> Absensi Siswa</div>
+      <div class="mode-toggle" role="tablist" aria-label="Pilih mode">
+        <button id="mode-guru" onclick="setMode('guru')">Guru</button>
+        <button id="mode-siswa" onclick="setMode('siswa')">Siswa</button>
+        <button id="mode-admin" onclick="setMode('admin')">Admin</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    <div id="guru-view">
+      <div id="guru-gate" style="display:none"></div>
+      <div id="guru-main">
+      <div id="guru-akunbar"></div>
+      <nav class="tabs" id="guru-tabs">
+        <button data-tab="beranda" onclick="switchTab('beranda')">🏠 Beranda</button>
+        <button data-tab="absensi" onclick="switchTab('absensi')">📝 Absensi</button>
+        <button data-tab="pindai" onclick="switchTab('pindai')">📷 Pindai</button>
+        <button data-tab="siswa" onclick="switchTab('siswa')">👥 Siswa</button>
+        <button data-tab="rekap" onclick="switchTab('rekap')">📊 Rekap</button>
+      </nav>
+      <section id="tab-beranda"></section>
+      <section id="tab-absensi"></section>
+      <section id="tab-pindai"></section>
+      <section id="tab-siswa"></section>
+      <section id="tab-rekap"></section>
+      </div>
+    </div>
+    <div id="siswa-view" style="display:none"></div>
+    <div id="admin-view" style="display:none"></div>
+  </main>
+  <footer>Absensi Siswa — semua data tersimpan aman di perangkat ini (tidak dikirim ke server mana pun).</footer>
+</div>
+<div id="print-area"></div>
+<div id="modal-root"></div>
+
+<script src="qrcode.js"></script>
+<script src="jsQR.js"></script>
+<script>
+'use strict';
+/* ============================== DATA ============================== */
+const DB_KEY = 'absensiSiswa.v1';
+const MODE_KEY = 'absensiSiswa.mode';
+const STATUSES = [
+  { k:'Hadir', short:'H' },
+  { k:'Sakit', short:'S' },
+  { k:'Izin',  short:'I' },
+  { k:'Alpa',  short:'A' }
+];
+
+/* Kolom identitas lengkap seorang siswa (di luar id/nama/nis/jk/kelas).
+   Dipakai formulir pendaftaran, Edit Identitas, dan pemeriksaan duplikat. */
+const IDENT_FIELDS = ['ayah','ibu','anakKe','alamat','nik','email','hp','tempatLahir','tglLahir'];
+const DOK_KEYS = ['kk','ktpAyah','ktpIbu'];
+const DOK_LABEL = { kk:'Kartu Keluarga (KK)', ktpAyah:'KTP Ayah', ktpIbu:'KTP Ibu' };
+
+/* Lengkapi catatan siswa lama dengan kolom identitas/dokumen kosong. */
+function normStudent(s){
+  IDENT_FIELDS.forEach(f => { if(s[f] == null) s[f] = ''; });
+  if(!s.dokumen || typeof s.dokumen !== 'object') s.dokumen = {};
+  DOK_KEYS.forEach(k => {
+    // Hanya data URL gambar yang dipertahankan; nilai lain dibuang demi keamanan.
+    if(typeof s.dokumen[k] !== 'string' || (s.dokumen[k] && s.dokumen[k].indexOf('data:image/') !== 0)) s.dokumen[k] = '';
+  });
+  return s;
+}
+function loadDB(){
+  try{
+    const raw = localStorage.getItem(DB_KEY);
+    if(raw){
+      const d = JSON.parse(raw);
+      if(d && Array.isArray(d.classes) && Array.isArray(d.students) && Array.isArray(d.attendance)){
+        if(!Array.isArray(d.accounts)) d.accounts = [];
+        // Akun lama (dibuat sebelum ada peran) dianggap akun Siswa.
+        d.accounts.forEach(a => { if(!a.role) a.role = 'siswa'; });
+        // Kelas lama belum punya pemilik guru.
+        d.classes.forEach(c => { if(c.ownerTeacherId === undefined) c.ownerTeacherId = null; });
+        d.students.forEach(normStudent);
+        return d;
+      }
+    }
+  }catch(e){}
+  return { classes:[], students:[], attendance:[], accounts:[], myStudentId:null };
+}
+let db = loadDB();
+function saveDB(){ try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){} }
+/* Simpan dengan laporan keberhasilan — dipakai saat menyimpan foto dokumen,
+   agar kuota localStorage yang terlampaui ketahuan dan bisa ditolak dengan jelas. */
+function saveDBStrict(){
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); return true; }
+  catch(e){ return false; }
+}
+const PESAN_KUOTA = 'Penyimpanan perangkat penuh: data tidak dapat disimpan karena kuota penyimpanan peramban (localStorage) terlampaui — kemungkinan foto dokumen terlalu besar/banyak. Coba unggah foto yang lebih kecil atau hapus sebagian data lama, lalu simpan lagi.';
+
+const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function randCode(len){
+  let s = '';
+  try{
+    const a = new Uint8Array(len); crypto.getRandomValues(a);
+    a.forEach(b => { s += ALPHABET[b % ALPHABET.length]; });
+  }catch(e){
+    for(let i=0;i<len;i++) s += ALPHABET[Math.floor(Math.random()*ALPHABET.length)];
+  }
+  return s;
+}
+function newStudentId(){
+  let id; let tries = 0;
+  do { id = randCode(8); tries++; } while (db.students.some(s => s.id === id) && tries < 50);
+  return id;
+}
+function newClassId(){
+  let id; let tries = 0;
+  do { id = 'K' + randCode(7); tries++; } while (db.classes.some(c => c.id === id) && tries < 50);
+  return id;
+}
+
+/* ============================== BANTUAN (UTIL) ============================== */
+const HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+function pad2(n){ return String(n).padStart(2,'0'); }
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+}
+function nowTime(){
+  const d = new Date();
+  return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+function fmtTgl(ymd){
+  if(!ymd) return '-';
+  const p = ymd.split('-').map(Number);
+  const dt = new Date(p[0], p[1]-1, p[2]);
+  return HARI[dt.getDay()] + ', ' + p[2] + ' ' + BULAN[p[1]-1] + ' ' + p[0];
+}
+function fmtBulan(ym){
+  const p = ym.split('-').map(Number);
+  return BULAN[p[1]-1] + ' ' + p[0];
+}
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function getClass(id){ return db.classes.find(c => c.id === id) || null; }
+function className(id){ const c = getClass(id); return c ? c.name : '-'; }
+function getStudent(id){ return db.students.find(s => s.id === id) || null; }
+function findClassByName(name, ownerId){
+  const n = String(name || '').trim().toLowerCase();
+  if(!n) return null;
+  return db.classes.find(c => c.name.trim().toLowerCase() === n &&
+    (ownerId === undefined || (c.ownerTeacherId || null) === ownerId)) || null;
+}
+/* Pemisahan data per guru: guru yang masuk hanya melihat kelas miliknya
+   (ownerTeacherId = id akunnya) dan siswa di kelas-kelas itu. */
+function guruClasses(acc){
+  if(!acc) return [];
+  return db.classes.filter(c => c.ownerTeacherId === acc.id);
+}
+function guruStudents(acc){
+  const ids = guruClasses(acc).map(c => c.id);
+  return db.students.filter(s => ids.indexOf(s.classId) !== -1);
+}
+function classOptionsFrom(list, selected, withAll){
+  let h = '';
+  if(withAll) h += '<option value="">Semua Kelas</option>';
+  list.forEach(c => {
+    h += '<option value="' + c.id + '"' + (selected === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+  });
+  return h;
+}
+function recordOf(studentId, date){
+  return db.attendance.find(a => a.studentId === studentId && a.date === date) || null;
+}
+function upsertAttendance(studentId, date, status, note){
+  const ex = recordOf(studentId, date);
+  if(ex){ ex.status = status; ex.note = note || ''; if(!ex.time) ex.time = nowTime(); }
+  else db.attendance.push({ studentId, date, status, note: note || '', time: nowTime() });
+}
+function studentsOfClass(classId){
+  return db.students
+    .filter(s => !classId || s.classId === classId)
+    .slice()
+    .sort((a,b) => a.name.localeCompare(b.name, 'id'));
+}
+function showBanner(el, type, msg){
+  if(!el) return;
+  el.className = 'banner show ' + type;
+  el.textContent = msg;
+}
+function hideBanner(el){ if(el){ el.className = 'banner'; el.textContent = ''; } }
+function beep(){
+  try{
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if(!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880; g.gain.value = 0.08;
+    o.start(); o.stop(ctx.currentTime + 0.15);
+    setTimeout(() => { try{ ctx.close(); }catch(e){} }, 300);
+  }catch(e){}
+  try{ if(navigator.vibrate) navigator.vibrate(80); }catch(e){}
+}
+
+/* ============================== NAVIGASI ============================== */
+let mode = localStorage.getItem(MODE_KEY) || 'guru';
+if(mode !== 'guru' && mode !== 'siswa' && mode !== 'admin') mode = 'guru';
+let guruTab = 'beranda';
+
+function setMode(m){
+  mode = m;
+  try{ localStorage.setItem(MODE_KEY, m); }catch(e){}
+  if(m !== 'guru') stopCamera();
+  editMine = false;
+  akunMsg = null;
+  guruMsg = null;
+  adminMsg = null;
+  render();
+}
+function switchTab(t){
+  guruTab = t;
+  if(t !== 'pindai') stopCamera();
+  if(t === 'absensi') absenLoadDraft();
+  render();
+}
+function render(){
+  document.getElementById('mode-guru').classList.toggle('active', mode === 'guru');
+  document.getElementById('mode-siswa').classList.toggle('active', mode === 'siswa');
+  document.getElementById('mode-admin').classList.toggle('active', mode === 'admin');
+  document.getElementById('guru-view').style.display = mode === 'guru' ? '' : 'none';
+  document.getElementById('siswa-view').style.display = mode === 'siswa' ? '' : 'none';
+  document.getElementById('admin-view').style.display = mode === 'admin' ? '' : 'none';
+  if(mode === 'guru'){
+    const acc = currentAccount();
+    const isGuru = !!acc && acc.role === 'guru';
+    document.getElementById('guru-gate').style.display = isGuru ? 'none' : '';
+    document.getElementById('guru-main').style.display = isGuru ? '' : 'none';
+    if(!isGuru){ renderGerbangGuru(document.getElementById('guru-gate')); return; }
+    document.getElementById('guru-akunbar').innerHTML =
+      '<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+      '<span class="small">👩‍🏫 Masuk sebagai Guru <b>' + esc(acc.email) + '</b> — Anda hanya melihat kelas &amp; siswa milik Anda.</span>' +
+      '<button class="btn secondary small-btn" onclick="keluarAkun()">Keluar / Ganti Akun</button></div>';
+    document.querySelectorAll('#guru-tabs button').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-tab') === guruTab);
+    });
+    ['beranda','absensi','pindai','siswa','rekap'].forEach(t => {
+      document.getElementById('tab-' + t).style.display = (t === guruTab) ? '' : 'none';
+    });
+    if(guruTab === 'beranda') renderBeranda();
+    if(guruTab === 'absensi') renderAbsensi();
+    if(guruTab === 'pindai') renderPindai();
+    if(guruTab === 'siswa') renderSiswaGuru();
+    if(guruTab === 'rekap') renderRekap();
+  } else if(mode === 'siswa'){
+    renderSiswaMode();
+  } else {
+    renderAdminMode();
+  }
+}
+
+/* ============================== BERANDA ============================== */
+function renderBeranda(){
+  const el = document.getElementById('tab-beranda');
+  const acc = currentAccount();
+  const myClasses = guruClasses(acc);
+  const myStudents = guruStudents(acc);
+  const tgl = todayStr();
+  const totalSiswa = myStudents.length;
+
+  if(myClasses.length === 0 || totalSiswa === 0){
+    el.innerHTML =
+      '<div class="card"><div class="empty">' +
+      '<div class="big">👋</div>' +
+      '<h2>Selamat datang di Absensi Siswa</h2>' +
+      '<p>Belum ada kelas/siswa atas nama akun guru Anda. Mulai dalam dua langkah mudah:</p>' +
+      '<p><b>1.</b> Tambahkan kelas dan siswa di tab <b>Siswa</b>.<br>' +
+      '<b>2.</b> Isi kehadiran setiap hari di tab <b>Absensi</b>, atau pindai QR siswa di tab <b>Pindai</b>.</p>' +
+      '<p class="small">Siswa juga bisa mendaftar sendiri dari HP mereka lewat mode <b>Siswa</b> di kanan atas, lalu menunjukkan QR pribadinya untuk dipindai guru.</p>' +
+      '<button class="btn" onclick="switchTab(\'siswa\')">➕ Tambah Kelas &amp; Siswa</button>' +
+      '</div></div>';
+    return;
+  }
+
+  const counts = { Hadir:0, Sakit:0, Izin:0, Alpa:0 };
+  let tercatat = 0;
+  myStudents.forEach(s => {
+    const r = recordOf(s.id, tgl);
+    if(r){ tercatat++; if(counts[r.status] != null) counts[r.status]++; }
+  });
+  const persen = totalSiswa ? Math.round(counts.Hadir / totalSiswa * 100) : 0;
+
+  let classHtml = '';
+  myClasses.forEach(c => {
+    const murid = db.students.filter(s => s.classId === c.id);
+    if(murid.length === 0) return;
+    let rec = 0, hdr = 0;
+    murid.forEach(s => { const r = recordOf(s.id, tgl); if(r){ rec++; if(r.status === 'Hadir') hdr++; } });
+    const pct = Math.round(rec / murid.length * 100);
+    classHtml +=
+      '<div class="class-progress"><div class="cp-head">' +
+      '<span><b>' + esc(c.name) + '</b></span>' +
+      '<span class="muted">' + rec + '/' + murid.length + ' tercatat • ' + hdr + ' hadir</span></div>' +
+      '<div class="progress"><div style="width:' + pct + '%"></div></div></div>';
+  });
+  if(!classHtml) classHtml = '<p class="muted">Belum ada siswa di kelas mana pun.</p>';
+
+  el.innerHTML =
+    '<div class="card">' +
+      '<h2>' + fmtTgl(tgl) + '</h2>' +
+      '<p class="muted" style="margin-top:0">Ringkasan kehadiran hari ini — ' + tercatat + ' dari ' + totalSiswa + ' siswa sudah tercatat.</p>' +
+      '<div class="stat-grid">' +
+        '<div class="stat hadir"><div class="num">' + counts.Hadir + '</div><div class="lbl">Hadir</div></div>' +
+        '<div class="stat sakit"><div class="num">' + counts.Sakit + '</div><div class="lbl">Sakit</div></div>' +
+        '<div class="stat izin"><div class="num">' + counts.Izin + '</div><div class="lbl">Izin</div></div>' +
+        '<div class="stat alpa"><div class="num">' + counts.Alpa + '</div><div class="lbl">Alpa</div></div>' +
+        '<div class="stat"><div class="num">' + persen + '%</div><div class="lbl">% Hadir</div></div>' +
+      '</div>' +
+      '<div class="row" style="margin-top:14px">' +
+        '<button class="btn" onclick="switchTab(\'absensi\')">📝 Isi Absensi</button>' +
+        '<button class="btn secondary" onclick="switchTab(\'pindai\')">📷 Pindai QR</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card"><h3>Kemajuan per Kelas — Hari Ini</h3>' + classHtml + '</div>';
+}
+
+/* ============================== ABSENSI ============================== */
+let absenClass = '';   // '' = semua kelas
+let absenDate = todayStr();
+let absenDraft = {};   // studentId -> {status, note}
+
+function absenShownStudents(){
+  const acc = currentAccount();
+  const mine = guruStudents(acc);
+  if(!absenClass) return mine.slice().sort((a,b) => a.name.localeCompare(b.name, 'id'));
+  return mine.filter(s => s.classId === absenClass);
+}
+function absenLoadDraft(){
+  absenDraft = {};
+  absenShownStudents().forEach(s => {
+    const r = recordOf(s.id, absenDate);
+    if(r) absenDraft[s.id] = { status: r.status, note: r.note || '' };
+  });
+}
+function renderAbsensi(){
+  const el = document.getElementById('tab-absensi');
+  const acc = currentAccount();
+  const myClasses = guruClasses(acc);
+  if(myClasses.length === 0){
+    el.innerHTML = '<div class="card"><div class="empty"><div class="big">📝</div>' +
+      '<p>Belum ada kelas atas nama Anda. Tambahkan kelas dan siswa dulu di tab <b>Siswa</b>.</p>' +
+      '<button class="btn" onclick="switchTab(\'siswa\')">Ke Tab Siswa</button></div></div>';
+    return;
+  }
+  if(absenClass && !myClasses.some(c => c.id === absenClass)) absenClass = '';
+  const shown = absenShownStudents();
+  let opts = '<option value="">Semua Kelas</option>';
+  myClasses.forEach(c => {
+    opts += '<option value="' + c.id + '"' + (absenClass === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+  });
+
+  let rows = '';
+  if(shown.length === 0){
+    rows = '<p class="muted">Tidak ada siswa pada pilihan kelas ini.</p>';
+  }
+  shown.forEach(s => {
+    const d = absenDraft[s.id] || {};
+    const sudah = !!recordOf(s.id, absenDate);
+    let btns = '';
+    STATUSES.forEach(st => {
+      btns += '<button type="button" class="st-btn' + (d.status === st.k ? ' active' : '') + '" data-st="' + st.k + '"' +
+        ' onclick="setAbsenStatus(\'' + s.id + '\',\'' + st.k + '\')">' +
+        '<span class="lbl-short">' + st.short + '</span><span class="lbl-full">' + st.k + '</span></button>';
+    });
+    rows +=
+      '<div class="student-row">' +
+        '<div class="student-info"><span class="nm">' + esc(s.name) + '</span>' +
+        (sudah ? '<span class="chip">✓ Tercatat</span>' : '') +
+        '<div class="sub">NISN ' + esc(s.nis || '-') + (absenClass === '' ? ' • ' + esc(className(s.classId)) : '') + '</div></div>' +
+        '<div class="st-btns">' + btns + '</div>' +
+        '<input class="inp note-inp" placeholder="Keterangan (opsional)" value="' + esc(d.note || '') + '"' +
+        ' oninput="setAbsenNote(\'' + s.id + '\', this.value)">' +
+      '</div>';
+  });
+
+  el.innerHTML =
+    '<div class="card">' +
+      '<h2>Absensi Harian</h2>' +
+      '<p class="muted" style="margin-top:0">Pilih kelas dan tanggal, beri status tiap siswa, lalu simpan. Menyimpan ulang tanggal yang sama akan menimpa catatan siswa yang ditampilkan.</p>' +
+      '<div class="row">' +
+        '<div class="field"><label for="absen-kelas">Kelas</label><select id="absen-kelas" class="inp" onchange="absenClassChange(this.value)">' + opts + '</select></div>' +
+        '<div class="field"><label for="absen-tgl">Tanggal</label><input id="absen-tgl" type="date" class="inp" value="' + absenDate + '" onchange="absenDateChange(this.value)"></div>' +
+      '</div>' +
+      '<div id="absen-banner" class="banner"></div>' +
+      '<div id="absen-list">' + rows + '</div>' +
+      '<div class="row" style="margin-top:14px">' +
+        '<button class="btn secondary" onclick="absenSemuaHadir()">✓ Semua Hadir</button>' +
+        '<button class="btn" onclick="absenSimpan()">💾 Simpan Absensi</button>' +
+      '</div>' +
+    '</div>';
+}
+function absenClassChange(v){ absenClass = v; absenLoadDraft(); renderAbsensi(); }
+function absenDateChange(v){ if(v){ absenDate = v; } absenLoadDraft(); renderAbsensi(); }
+function setAbsenStatus(sid, status){
+  if(!absenDraft[sid]) absenDraft[sid] = { status:'', note:'' };
+  absenDraft[sid].status = (absenDraft[sid].status === status) ? '' : status;
+  renderAbsensi();
+}
+function setAbsenNote(sid, val){
+  if(!absenDraft[sid]) absenDraft[sid] = { status:'', note:'' };
+  absenDraft[sid].note = val;
+}
+function absenSemuaHadir(){
+  absenShownStudents().forEach(s => {
+    if(!absenDraft[s.id]) absenDraft[s.id] = { status:'', note:'' };
+    absenDraft[s.id].status = 'Hadir';
+  });
+  renderAbsensi();
+}
+function absenSimpan(){
+  const banner = document.getElementById('absen-banner');
+  let n = 0;
+  absenShownStudents().forEach(s => {
+    const d = absenDraft[s.id];
+    if(d && d.status){
+      upsertAttendance(s.id, absenDate, d.status, String(d.note || '').slice(0, 200));
+      n++;
+    }
+  });
+  if(n === 0){
+    renderAbsensi();
+    showBanner(document.getElementById('absen-banner'), 'err', 'Belum ada status yang dipilih. Beri status minimal satu siswa sebelum menyimpan.');
+    return;
+  }
+  saveDB();
+  absenLoadDraft();
+  renderAbsensi();
+  showBanner(document.getElementById('absen-banner'), 'ok', '✅ Absensi ' + fmtTgl(absenDate) + ' tersimpan untuk ' + n + ' siswa.');
+}
+
+/* ============================== PINDAI QR ============================== */
+let scanStream = null;
+let scanRAF = null;
+let scanCooldownUntil = 0;
+let pindaiMsg = null; // {type, text} pesan terakhir di tab Pindai
+
+function renderPindai(){
+  const el = document.getElementById('tab-pindai');
+  const camSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  el.innerHTML =
+    '<div class="card">' +
+      '<h2>Pindai QR Siswa</h2>' +
+      '<p class="muted" style="margin-top:0">Arahkan kamera ke QR siswa untuk mencatat kehadiran <b>hari ini</b> (' + fmtTgl(todayStr()) + '). QR dari siswa yang belum dikenal akan otomatis menambahkan siswa itu.</p>' +
+      '<div id="pindai-banner" class="banner"></div>' +
+      (camSupported
+        ? '<video id="scan-video" class="scan-video" playsinline muted style="display:none"></video>' +
+          '<div class="row" style="margin:12px 0">' +
+            '<button class="btn" id="btn-cam-start" onclick="startCamera()">📷 Nyalakan Kamera</button>' +
+            '<button class="btn secondary" id="btn-cam-stop" onclick="stopCamera()" style="display:none">Matikan Kamera</button>' +
+          '</div>'
+        : '<div class="banner info show">Kamera tidak tersedia di perangkat/peramban ini. Gunakan kolom kode manual di bawah — caranya sama.</div>') +
+      '<canvas id="scan-canvas" style="display:none"></canvas>' +
+      '<div class="field"><label for="manual-code">Kode Manual</label>' +
+        '<input id="manual-code" class="inp" placeholder="Ketik / tempel ID siswa atau isi QR" autocomplete="off"></div>' +
+      '<button class="btn block" onclick="prosesKodeManual()">Proses Kode</button>' +
+      '<p class="small muted">ID siswa tercantum di bawah QR pada kartu QR siswa.</p>' +
+    '</div>';
+  if(pindaiMsg) showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+  if(scanStream){
+    const v = document.getElementById('scan-video');
+    if(v){ v.style.display = ''; v.srcObject = scanStream; }
+    const b1 = document.getElementById('btn-cam-start'); if(b1) b1.style.display = 'none';
+    const b2 = document.getElementById('btn-cam-stop'); if(b2) b2.style.display = '';
+  }
+}
+async function startCamera(){
+  const banner = document.getElementById('pindai-banner');
+  try{
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  }catch(e){
+    showBanner(banner, 'err', 'Kamera tidak bisa dibuka (' + esc(e && e.name ? e.name : 'izin ditolak') + '). Periksa izin kamera, atau gunakan kolom Kode Manual di bawah.');
+    return;
+  }
+  const v = document.getElementById('scan-video');
+  if(!v){ stopCamera(); return; }
+  v.style.display = '';
+  v.srcObject = scanStream;
+  try{ await v.play(); }catch(e){}
+  const b1 = document.getElementById('btn-cam-start'); if(b1) b1.style.display = 'none';
+  const b2 = document.getElementById('btn-cam-stop'); if(b2) b2.style.display = '';
+  hideBanner(banner);
+  scanTick();
+}
+function stopCamera(){
+  if(scanRAF){ cancelAnimationFrame(scanRAF); scanRAF = null; }
+  if(scanStream){
+    scanStream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
+    scanStream = null;
+  }
+  const v = document.getElementById('scan-video');
+  if(v){ v.srcObject = null; v.style.display = 'none'; }
+  const b1 = document.getElementById('btn-cam-start'); if(b1) b1.style.display = '';
+  const b2 = document.getElementById('btn-cam-stop'); if(b2) b2.style.display = 'none';
+}
+function scanTick(){
+  if(!scanStream) return;
+  const v = document.getElementById('scan-video');
+  const canvas = document.getElementById('scan-canvas');
+  if(v && canvas && v.readyState === v.HAVE_ENOUGH_DATA && v.videoWidth > 0){
+    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+    try{
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = (typeof jsQR === 'function') ? jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' }) : null;
+      if(code && code.data && Date.now() > scanCooldownUntil){
+        scanCooldownUntil = Date.now() + 3000;
+        handleScan(code.data);
+      }
+    }catch(e){}
+  }
+  scanRAF = requestAnimationFrame(scanTick);
+}
+function prosesKodeManual(){
+  const inp = document.getElementById('manual-code');
+  const val = (inp.value || '').trim();
+  if(!val){
+    pindaiMsg = { type:'err', text:'Kolom kode masih kosong. Ketik ID siswa atau tempel isi QR.' };
+    showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+    return;
+  }
+  handleScan(val);
+  inp.value = '';
+}
+/* Logika inti pindai — dipakai kamera dan kode manual.
+   Mengembalikan & menampilkan pesan hasil. */
+function handleScan(text){
+  let payload = null;
+  try{
+    const j = JSON.parse(text);
+    if(j && j.app === 'absensi-siswa' && j.id) payload = j;
+  }catch(e){}
+  const sid = payload ? String(payload.id) : String(text || '').trim();
+  const acc = currentAccount();
+  let st = getStudent(sid);
+
+  if(st && acc && acc.role === 'guru'){
+    const kls = getClass(st.classId);
+    if(!kls || kls.ownerTeacherId !== acc.id){
+      pindaiMsg = { type:'err', text:'Siswa "' + st.name + '" terdaftar pada kelas milik akun guru lain di perangkat ini. Kehadiran tidak dicatat di akun Anda agar data antar-guru tidak tercampur.' };
+      showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+      return;
+    }
+  }
+
+  if(!st && payload && payload.nama){
+    // Siswa belum dikenal: impor dari isi QR ke kelas milik guru yang masuk
+    // (dengan penjaga anti-duplikat seluruh identitas).
+    let cls = acc ? findClassByName(payload.kelas, acc.id) : findClassByName(payload.kelas);
+    const candScan = normStudent({
+      name: String(payload.nama),
+      nis: payload.nis ? String(payload.nis) : '',
+      gender: '',
+      classId: cls ? cls.id : '__kelas-baru__'
+    });
+    const dupScan = cekDuplikat(candScan, null);
+    if(dupScan){
+      pindaiMsg = { type:'err', text:'❌ Impor dari QR dibatalkan — ' + dupScan };
+      showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+      return;
+    }
+    if(!cls){
+      cls = { id: newClassId(), name: String(payload.kelas || 'Tanpa Kelas').trim() || 'Tanpa Kelas', ownerTeacherId: acc ? acc.id : null };
+      db.classes.push(cls);
+    }
+    st = normStudent({ id: sid, name: candScan.name, nis: candScan.nis, gender: '', classId: cls.id });
+    db.students.push(st);
+    saveDB();
+  }
+  if(!st){
+    pindaiMsg = { type:'err', text:'Kode tidak dikenal: "' + sid + '". Pastikan ID siswa benar atau minta siswa menunjukkan QR pribadinya.' };
+    showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+    return;
+  }
+  const tgl = todayStr();
+  const ex = recordOf(st.id, tgl);
+  if(ex){
+    if(ex.status === 'Hadir'){
+      pindaiMsg = { type:'info', text: st.name + ' sudah tercatat Hadir hari ini (' + (ex.time || '-') + ').' };
+    } else {
+      pindaiMsg = { type:'info', text: st.name + ' sudah tercatat hari ini dengan status ' + ex.status + ' — catatan tidak diubah.' };
+    }
+    showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+    return;
+  }
+  db.attendance.push({ studentId: st.id, date: tgl, status: 'Hadir', note: '', time: nowTime() });
+  saveDB();
+  beep();
+  pindaiMsg = { type:'ok', text: '✅ Hadir: ' + st.name + ' (' + className(st.classId) + ') — ' + nowTime() };
+  showBanner(document.getElementById('pindai-banner'), pindaiMsg.type, pindaiMsg.text);
+}
+
+/* ============================== QR ============================== */
+function qrPayload(st){
+  return JSON.stringify({
+    app: 'absensi-siswa', v: 1,
+    id: st.id, nama: st.name, nis: st.nis || '', kelas: className(st.classId)
+  });
+}
+function drawQR(canvas, text, cell){
+  cell = cell || 8;
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  const n = qr.getModuleCount();
+  const quiet = 4;
+  const size = (n + quiet * 2) * cell;
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#000000';
+  for(let r = 0; r < n; r++)
+    for(let c = 0; c < n; c++)
+      if(qr.isDark(r, c)) ctx.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+  return size;
+}
+/* Kanvas kartu lengkap (QR + nama + NIS + kelas) untuk diunduh sebagai PNG. */
+function drawCardCanvas(st, cell){
+  cell = cell || 10;
+  const qr = qrcode(0, 'M');
+  qr.addData(qrPayload(st));
+  qr.make();
+  const n = qr.getModuleCount();
+  const quiet = 4;
+  const qrSize = (n + quiet * 2) * cell;
+  const W = Math.max(qrSize + 48, 380);
+  const H = qrSize + 138;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#14532d'; ctx.lineWidth = 4;
+  ctx.strokeRect(4, 4, W - 8, H - 8);
+  ctx.fillStyle = '#000000';
+  const offX = (W - qrSize) / 2, offY = 18;
+  for(let r = 0; r < n; r++)
+    for(let c = 0; c < n; c++)
+      if(qr.isDark(r, c)) ctx.fillRect(offX + (c + quiet) * cell, offY + (r + quiet) * cell, cell, cell);
+  ctx.textAlign = 'center';
+  let fs = 27;
+  ctx.fillStyle = '#14532d';
+  ctx.font = '800 ' + fs + 'px "Plus Jakarta Sans", system-ui, sans-serif';
+  while(ctx.measureText(st.name).width > W - 28 && fs > 14){
+    fs -= 2; ctx.font = '800 ' + fs + 'px "Plus Jakarta Sans", system-ui, sans-serif';
+  }
+  ctx.fillText(st.name, W / 2, qrSize + 62);
+  ctx.fillStyle = '#374151';
+  ctx.font = '600 19px "Plus Jakarta Sans", system-ui, sans-serif';
+  ctx.fillText('NISN ' + (st.nis || '-') + ' • ' + className(st.classId), W / 2, qrSize + 92);
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '15px "Plus Jakarta Sans", system-ui, sans-serif';
+  ctx.fillText('ID: ' + st.id + ' • Absensi Siswa', W / 2, qrSize + 120);
+  return canvas;
+}
+function unduhQR(sid){
+  const st = getStudent(sid);
+  if(!st) return;
+  const card = drawCardCanvas(st, 10);
+  const a = document.createElement('a');
+  a.download = 'QR-' + st.name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') + '.png';
+  a.href = card.toDataURL('image/png');
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function openQRModal(sid){
+  const st = getStudent(sid);
+  if(!st) return;
+  const root = document.getElementById('modal-root');
+  root.innerHTML =
+    '<div class="modal-back" onclick="if(event.target===this) closeModal()">' +
+      '<div class="modal">' +
+        '<h3 style="margin-top:0">Kartu QR Siswa</h3>' +
+        '<canvas id="modal-qr"></canvas>' +
+        '<div style="font-weight:800;font-size:17px;margin-top:8px">' + esc(st.name) + '</div>' +
+        '<div class="muted">NISN ' + esc(st.nis || '-') + ' • ' + esc(className(st.classId)) + '</div>' +
+        '<div class="muted small">ID: ' + esc(st.id) + '</div>' +
+        '<div class="row" style="margin-top:14px">' +
+          '<button class="btn" onclick="unduhQR(\'' + st.id + '\')">⬇ Unduh PNG</button>' +
+          '<button class="btn secondary" onclick="cetakSatuKartu(\'' + st.id + '\')">🖨 Cetak</button>' +
+        '</div>' +
+        '<button class="btn secondary block" style="margin-top:10px" onclick="closeModal()">Tutup</button>' +
+      '</div>' +
+    '</div>';
+  drawQR(document.getElementById('modal-qr'), qrPayload(st), 8);
+}
+function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
+
+/* ============================== DETAIL SISWA ==============================
+   Menampilkan identitas lengkap + foto dokumen seorang siswa. Dipakai guru
+   (dari daftar siswanya), siswa (datanya sendiri), dan admin (semua siswa). */
+function barisIdent(label, val){
+  return '<tr><td>' + label + '</td><td>' + (val ? esc(val) : '<span class="muted">—</span>') + '</td></tr>';
+}
+function openDetailSiswa(sid){
+  const st = getStudent(sid);
+  if(!st) return;
+  normStudent(st);
+  const pemilik = st.ownerAccountId ? db.accounts.find(a => a.id === st.ownerAccountId) : null;
+  const ttl = [st.tempatLahir, st.tglLahir ? fmtTgl(st.tglLahir) : ''].filter(Boolean).join(', ');
+  let dokHtml = '';
+  DOK_KEYS.forEach(k => {
+    const srcDok = dokSrcAman(st.dokumen[k]);
+    dokHtml += '<div class="form-sub" style="margin-top:12px">' + DOK_LABEL[k] + '</div>' +
+      (srcDok
+        ? '<div class="doc-view"><img src="' + srcDok + '" alt="' + DOK_LABEL[k] + '"></div>'
+        : '<p class="muted small" style="margin:0">Belum diunggah.</p>');
+  });
+  const root = document.getElementById('modal-root');
+  root.innerHTML =
+    '<div class="modal-back" onclick="if(event.target===this) closeModal()">' +
+      '<div class="modal" style="max-width:480px;text-align:left">' +
+        '<h3 style="margin-top:0;text-align:center">Detail Siswa</h3>' +
+        '<table class="ident">' +
+          barisIdent('Nama Lengkap', st.name) +
+          barisIdent('NISN', st.nis) +
+          barisIdent('Jenis Kelamin', st.gender) +
+          barisIdent('Kelas', className(st.classId)) +
+          barisIdent('Tempat, Tanggal Lahir', ttl) +
+          barisIdent('Nama Ayah', st.ayah) +
+          barisIdent('Nama Ibu', st.ibu) +
+          barisIdent('Anak ke Berapa', st.anakKe) +
+          barisIdent('NIK', st.nik) +
+          barisIdent('Alamat', st.alamat) +
+          barisIdent('Email', st.email) +
+          barisIdent('Nomor HP', st.hp) +
+          barisIdent('ID Siswa', st.id) +
+          (pemilik ? barisIdent('Akun Pemilik', pemilik.email + ' (' + pemilik.phone + ')') : '') +
+        '</table>' +
+        dokHtml +
+        '<div class="row" style="margin-top:16px">' +
+          '<button class="btn" onclick="closeModal(); openQRModal(\'' + st.id + '\')">Lihat QR</button>' +
+          '<button class="btn secondary" onclick="closeModal()">Tutup</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+/* ============================== CETAK KARTU QR ============================== */
+function buildPrintArea(list){
+  const area = document.getElementById('print-area');
+  area.innerHTML = list.map(st =>
+    '<div class="qr-card"><canvas data-qr="' + st.id + '"></canvas>' +
+    '<div class="qc-name">' + esc(st.name) + '</div>' +
+    '<div class="qc-sub">NISN ' + esc(st.nis || '-') + ' • ' + esc(className(st.classId)) + '</div>' +
+    '<div class="qc-sub">ID: ' + esc(st.id) + '</div></div>'
+  ).join('');
+  list.forEach(st => {
+    const cv = area.querySelector('canvas[data-qr="' + st.id + '"]');
+    if(cv) drawQR(cv, qrPayload(st), 6);
+  });
+}
+function cetakSatuKartu(sid){
+  const st = getStudent(sid);
+  if(!st) return;
+  buildPrintArea([st]);
+  setTimeout(() => window.print(), 60);
+}
+function cetakKartuTampil(){
+  const acc = currentAccount();
+  const mine = guruStudents(acc);
+  const list = (siswaClassFilter ? mine.filter(s => s.classId === siswaClassFilter) : mine)
+    .slice().sort((a,b) => a.name.localeCompare(b.name, 'id'));
+  if(list.length === 0){ alert('Tidak ada siswa pada pilihan kelas ini untuk dicetak.'); return; }
+  buildPrintArea(list);
+  setTimeout(() => window.print(), 60);
+}
+
+/* ============================== KELOLA SISWA (GURU) ============================== */
+let siswaClassFilter = '';  // '' = semua kelas
+let editStudentId = null;
+
+function classOptions(selected, withAll){
+  let h = '';
+  if(withAll) h += '<option value="">Semua Kelas</option>';
+  db.classes.forEach(c => {
+    h += '<option value="' + c.id + '"' + (selected === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+  });
+  return h;
+}
+function renderSiswaGuru(){
+  const el = document.getElementById('tab-siswa');
+  const acc = currentAccount();
+  const myClasses = guruClasses(acc);
+  if(siswaClassFilter && !myClasses.some(c => c.id === siswaClassFilter)) siswaClassFilter = '';
+
+  /* --- Kelola kelas (hanya milik guru yang masuk) --- */
+  let classList = '';
+  if(myClasses.length === 0){
+    classList = '<p class="muted">Belum ada kelas atas nama Anda. Tambahkan kelas pertama Anda, misalnya "VII-A". Kelas yang Anda buat hanya terlihat oleh akun Anda.</p>';
+  } else {
+    classList = myClasses.map(c => {
+      const n = db.students.filter(s => s.classId === c.id).length;
+      return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(c.name) + '</span>' +
+        '<div class="sub">' + n + ' siswa</div></div>' +
+        '<div class="icon-btns"><button class="btn danger small-btn" onclick="hapusKelas(\'' + c.id + '\')">Hapus</button></div></div>';
+    }).join('');
+  }
+
+  /* --- Form tambah / ubah siswa --- */
+  const ed = editStudentId ? getStudent(editStudentId) : null;
+  let formHtml;
+  if(myClasses.length === 0){
+    formHtml = '<p class="muted">Tambahkan kelas terlebih dahulu sebelum menambah siswa.</p>';
+  } else {
+    formHtml =
+      '<form onsubmit="return submitSiswa(event)">' +
+      '<div class="row">' +
+        '<div class="field"><label for="f-nama">Nama Siswa</label><input id="f-nama" class="inp" required placeholder="Nama lengkap" value="' + (ed ? esc(ed.name) : '') + '"></div>' +
+        '<div class="field"><label for="f-nis">NISN</label><input id="f-nis" class="inp" placeholder="Nomor Induk Siswa Nasional" value="' + (ed ? esc(ed.nis || '') : '') + '"></div>' +
+      '</div>' +
+      '<div class="row">' +
+        '<div class="field"><label for="f-gender">Jenis Kelamin</label><select id="f-gender" class="inp">' +
+          '<option value="Laki-laki"' + (ed && ed.gender === 'Laki-laki' ? ' selected' : '') + '>Laki-laki</option>' +
+          '<option value="Perempuan"' + (ed && ed.gender === 'Perempuan' ? ' selected' : '') + '>Perempuan</option>' +
+        '</select></div>' +
+        '<div class="field"><label for="f-kelas">Kelas</label><select id="f-kelas" class="inp">' +
+          classOptionsFrom(myClasses, ed ? ed.classId : (siswaClassFilter || myClasses[0].id), false) +
+        '</select></div>' +
+      '</div>' +
+      (ed ? '<p class="small muted" style="margin-top:0">Identitas lengkap dan dokumen siswa ini dapat dilihat lewat tombol <b>Detail</b> pada daftar siswa; pemilik akun siswa dapat melengkapinya lewat Edit Identitas di portal siswa.</p>' : '') +
+      '<button class="btn" type="submit">' + (ed ? '💾 Simpan Perubahan' : '➕ Tambah Siswa') + '</button>' +
+      (ed ? ' <button class="btn secondary" type="button" onclick="batalUbah()">Batal</button>' : '') +
+      '</form>';
+  }
+
+  /* --- Daftar siswa (hanya di kelas milik guru yang masuk) --- */
+  const mine = guruStudents(acc);
+  const shown = (siswaClassFilter ? mine.filter(s => s.classId === siswaClassFilter) : mine)
+    .slice().sort((a,b) => a.name.localeCompare(b.name, 'id'));
+  let listHtml = '';
+  if(shown.length === 0){
+    listHtml = '<p class="muted">Belum ada siswa pada pilihan kelas ini.</p>';
+  } else {
+    listHtml = shown.map(s =>
+      '<div class="student-row">' +
+        '<div class="student-info"><span class="nm">' + esc(s.name) + '</span>' +
+        '<div class="sub">NISN ' + esc(s.nis || '-') + (s.gender ? ' • ' + esc(s.gender) : '') +
+        (siswaClassFilter === '' ? ' • ' + esc(className(s.classId)) : '') + ' • ID ' + esc(s.id) + '</div></div>' +
+        '<div class="icon-btns">' +
+          '<button class="btn small-btn" onclick="openQRModal(\'' + s.id + '\')">QR</button>' +
+          '<button class="btn secondary small-btn" onclick="openDetailSiswa(\'' + s.id + '\')">Detail</button>' +
+          '<button class="btn secondary small-btn" onclick="mulaiUbah(\'' + s.id + '\')">Ubah</button>' +
+          '<button class="btn danger small-btn" onclick="hapusSiswa(\'' + s.id + '\')">Hapus</button>' +
+        '</div>' +
+      '</div>'
+    ).join('');
+  }
+
+  el.innerHTML =
+    '<div class="card"><h3>🏫 Kelas Saya</h3>' +
+      '<form onsubmit="return submitKelas(event)"><div class="row">' +
+        '<div class="field" style="margin-bottom:0"><input id="kls-nama" class="inp" placeholder="Nama kelas baru, misalnya VII-A" required></div>' +
+        '<div style="flex:0 0 auto"><button class="btn" type="submit">➕ Tambah Kelas</button></div>' +
+      '</div></form>' +
+      '<div style="margin-top:8px">' + classList + '</div>' +
+    '</div>' +
+    '<div class="card"><h3>' + (ed ? '✏️ Ubah Siswa' : '➕ Tambah Siswa') + '</h3>' + formHtml + '</div>' +
+    '<div class="card"><h3>📥 Tambah Banyak Siswa</h3>' +
+      (myClasses.length === 0
+        ? '<p class="muted">Tambahkan kelas terlebih dahulu.</p>'
+        : '<form onsubmit="return submitBulk(event)">' +
+          '<div class="field"><label for="bulk-kelas">Masuk ke Kelas</label><select id="bulk-kelas" class="inp">' + classOptionsFrom(myClasses, siswaClassFilter || myClasses[0].id, false) + '</select></div>' +
+          '<div class="field"><label for="bulk-teks">Satu siswa per baris — format: Nama;NISN</label>' +
+          '<textarea id="bulk-teks" class="inp" rows="5" placeholder="Budi Santoso;1001&#10;Siti Rahma;1002"></textarea></div>' +
+          '<button class="btn" type="submit">Tambahkan Semua</button></form>') +
+    '</div>' +
+    '<div class="card"><h3>👥 Daftar Siswa Saya</h3>' +
+      '<div class="row">' +
+        '<div class="field"><label for="siswa-filter">Tampilkan Kelas</label><select id="siswa-filter" class="inp" onchange="siswaFilterChange(this.value)">' + classOptionsFrom(myClasses, siswaClassFilter, true) + '</select></div>' +
+        '<div style="flex:0 0 auto; align-self:end"><button class="btn secondary" onclick="cetakKartuTampil()">🖨 Cetak Kartu QR Kelas</button></div>' +
+      '</div>' +
+      '<div id="siswa-banner" class="banner"></div>' +
+      listHtml +
+    '</div>' +
+    eksporImporCardHtml('guru');
+}
+function siswaFilterChange(v){ siswaClassFilter = v; renderSiswaGuru(); }
+function submitKelas(ev){
+  ev.preventDefault();
+  const acc = currentAccount();
+  const nama = document.getElementById('kls-nama').value.trim();
+  if(!nama || !acc) return false;
+  if(nama.length > 60){ alert('Nama kelas terlalu panjang (maks. 60 karakter).'); return false; }
+  if(findClassByName(nama, acc.id)){ alert('Anda sudah memiliki kelas "' + nama + '".'); return false; }
+  db.classes.push({ id: newClassId(), name: nama, ownerTeacherId: acc.id });
+  saveDB();
+  renderSiswaGuru();
+  showBanner(document.getElementById('siswa-banner'), 'ok', '✅ Kelas "' + nama + '" ditambahkan sebagai kelas Anda.');
+  return false;
+}
+function hapusKelas(cid){
+  const c = getClass(cid);
+  if(!c) return;
+  const n = db.students.filter(s => s.classId === cid).length;
+  if(!confirm('Hapus kelas "' + c.name + '"?' + (n ? ' ' + n + ' siswa di dalamnya beserta catatan kehadirannya juga akan terhapus.' : ''))) return;
+  const removedIds = db.students.filter(s => s.classId === cid).map(s => s.id);
+  db.attendance = db.attendance.filter(a => removedIds.indexOf(a.studentId) === -1);
+  db.students = db.students.filter(s => s.classId !== cid);
+  db.classes = db.classes.filter(x => x.id !== cid);
+  if(db.myStudentId && removedIds.indexOf(db.myStudentId) !== -1) db.myStudentId = null;
+  if(siswaClassFilter === cid) siswaClassFilter = '';
+  if(absenClass === cid) absenClass = '';
+  saveDB();
+  renderSiswaGuru();
+}
+function submitSiswa(ev){
+  ev.preventDefault();
+  const nama = document.getElementById('f-nama').value.trim();
+  const nis = document.getElementById('f-nis').value.trim();
+  const gender = document.getElementById('f-gender').value;
+  const kelas = document.getElementById('f-kelas').value;
+  if(!nama) return false;
+  const salahS = validasiNamaNis(nama, nis);
+  if(salahS){ alert('❌ Data belum valid: ' + salahS); return false; }
+  // Kandidat duplikat = hasil akhir catatan (ubahan digabung data lama),
+  // diperiksa dengan aturan seluruh-identitas.
+  const dasar = editStudentId ? (getStudent(editStudentId) || {}) : {};
+  const candS = Object.assign({}, dasar, { name: nama, nis: nis, gender: gender, classId: kelas });
+  const dupMsgS = cekDuplikat(candS, editStudentId || null);
+  if(dupMsgS){
+    alert('❌ ' + dupMsgS);
+    showBanner(document.getElementById('siswa-banner'), 'err', '❌ ' + dupMsgS);
+    return false;
+  }
+  if(editStudentId){
+    const st = getStudent(editStudentId);
+    if(st){ st.name = nama; st.nis = nis; st.gender = gender; st.classId = kelas; }
+    editStudentId = null;
+    saveDB();
+    renderSiswaGuru();
+    showBanner(document.getElementById('siswa-banner'), 'ok', '✅ Data siswa diperbarui.');
+  } else {
+    db.students.push(normStudent({ id: newStudentId(), name: nama, nis: nis, gender: gender, classId: kelas }));
+    saveDB();
+    renderSiswaGuru();
+    showBanner(document.getElementById('siswa-banner'), 'ok', '✅ Siswa "' + nama + '" ditambahkan.');
+  }
+  return false;
+}
+function mulaiUbah(sid){ editStudentId = sid; renderSiswaGuru(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function batalUbah(){ editStudentId = null; renderSiswaGuru(); }
+function hapusSiswa(sid){
+  const st = getStudent(sid);
+  if(!st) return;
+  if(!confirm('Hapus siswa "' + st.name + '" beserta catatan kehadirannya?')) return;
+  db.students = db.students.filter(s => s.id !== sid);
+  db.attendance = db.attendance.filter(a => a.studentId !== sid);
+  if(db.myStudentId === sid) db.myStudentId = null;
+  if(editStudentId === sid) editStudentId = null;
+  saveDB();
+  renderSiswaGuru();
+}
+function submitBulk(ev){
+  ev.preventDefault();
+  const kelas = document.getElementById('bulk-kelas').value;
+  const teks = document.getElementById('bulk-teks').value;
+  let n = 0, skip = 0;
+  teks.split(/\r?\n/).forEach(line => {
+    const t = line.trim();
+    if(!t) return;
+    const parts = t.split(';');
+    const nama = (parts[0] || '').trim();
+    const nis = (parts[1] || '').trim();
+    if(!nama) return;
+    if(validasiNamaNis(nama, nis)){ skip++; return; }
+    if(cekDuplikat(normStudent({ name: nama, nis: nis, gender: '', classId: kelas }), null)){ skip++; return; }
+    db.students.push(normStudent({ id: newStudentId(), name: nama, nis: nis, gender: '', classId: kelas }));
+    n++;
+  });
+  saveDB();
+  renderSiswaGuru();
+  let bulkMsg;
+  if(n && skip) bulkMsg = '✅ ' + n + ' siswa ditambahkan. ' + skip + ' baris dilewati karena seluruh identitasnya duplikat persis dengan siswa yang sudah ada.';
+  else if(n) bulkMsg = '✅ ' + n + ' siswa ditambahkan.';
+  else if(skip) bulkMsg = 'Semua baris dilewati: seluruh identitasnya duplikat persis dengan siswa yang sudah ada.';
+  else bulkMsg = 'Tidak ada baris yang valid. Gunakan format Nama;NISN per baris.';
+  showBanner(document.getElementById('siswa-banner'), n ? 'ok' : 'err', bulkMsg);
+  return false;
+}
+
+/* ============================== REKAP ============================== */
+let rekapMonth = todayStr().slice(0, 7);  // 'YYYY-MM'
+let rekapClass = '';
+
+function renderRekap(){
+  const el = document.getElementById('tab-rekap');
+  const acc = currentAccount();
+  const myClasses = guruClasses(acc);
+  if(myClasses.length === 0){
+    el.innerHTML = '<div class="card"><div class="empty"><div class="big">📊</div>' +
+      '<p>Belum ada data untuk direkap. Tambahkan kelas dan siswa di tab <b>Siswa</b>, lalu isi absensi.</p></div></div>';
+    return;
+  }
+  if(rekapClass && !myClasses.some(c => c.id === rekapClass)) rekapClass = '';
+  const mine = guruStudents(acc);
+  const list = (rekapClass ? mine.filter(s => s.classId === rekapClass) : mine)
+    .slice().sort((a,b) => a.name.localeCompare(b.name, 'id'));
+  const tot = { Hadir:0, Sakit:0, Izin:0, Alpa:0 };
+  let rows = '';
+  list.forEach(s => {
+    const c = { Hadir:0, Sakit:0, Izin:0, Alpa:0 };
+    db.attendance.forEach(a => {
+      if(a.studentId === s.id && a.date.indexOf(rekapMonth) === 0 && c[a.status] != null) c[a.status]++;
+    });
+    const total = c.Hadir + c.Sakit + c.Izin + c.Alpa;
+    const pct = total ? Math.round(c.Hadir / total * 100) + '%' : '-';
+    tot.Hadir += c.Hadir; tot.Sakit += c.Sakit; tot.Izin += c.Izin; tot.Alpa += c.Alpa;
+    rows += '<tr><td>' + esc(s.name) + '<div class="sub small muted">' + esc(className(s.classId)) + '</div></td>' +
+      '<td class="num">' + c.Hadir + '</td><td class="num">' + c.Sakit + '</td>' +
+      '<td class="num">' + c.Izin + '</td><td class="num">' + c.Alpa + '</td>' +
+      '<td class="num"><b>' + pct + '</b></td></tr>';
+  });
+  if(!rows) rows = '<tr><td colspan="6" class="muted">Tidak ada siswa pada pilihan kelas ini.</td></tr>';
+  const totAll = tot.Hadir + tot.Sakit + tot.Izin + tot.Alpa;
+  const totPct = totAll ? Math.round(tot.Hadir / totAll * 100) + '%' : '-';
+
+  el.innerHTML =
+    '<div class="card"><h2>Rekap Kehadiran</h2>' +
+      '<p class="muted" style="margin-top:0">Rekap bulan <b>' + fmtBulan(rekapMonth) + '</b> — persentase hadir dihitung dari catatan yang ada pada bulan itu.</p>' +
+      '<div class="row">' +
+        '<div class="field"><label for="rekap-bulan">Bulan</label><input id="rekap-bulan" type="month" class="inp" value="' + rekapMonth + '" onchange="rekapFilterChange()"></div>' +
+        '<div class="field"><label for="rekap-kelas">Kelas</label><select id="rekap-kelas" class="inp" onchange="rekapFilterChange()">' + classOptionsFrom(myClasses, rekapClass, true) + '</select></div>' +
+      '</div>' +
+      '<div style="margin-bottom:12px"><button class="btn secondary" onclick="unduhRekapCSV(\'guru\')">⬇ Unduh Rekap CSV (Bulan &amp; Kelas Ini)</button></div>' +
+      '<div class="table-wrap"><table>' +
+        '<thead><tr><th>Siswa</th><th class="num">Hadir</th><th class="num">Sakit</th><th class="num">Izin</th><th class="num">Alpa</th><th class="num">% Hadir</th></tr></thead>' +
+        '<tbody>' + rows +
+        '<tr class="total"><td>Total</td><td class="num">' + tot.Hadir + '</td><td class="num">' + tot.Sakit + '</td>' +
+        '<td class="num">' + tot.Izin + '</td><td class="num">' + tot.Alpa + '</td><td class="num">' + totPct + '</td></tr>' +
+        '</tbody></table></div>' +
+    '</div>';
+}
+function rekapFilterChange(){
+  const b = document.getElementById('rekap-bulan');
+  const k = document.getElementById('rekap-kelas');
+  if(b && b.value) rekapMonth = b.value;
+  if(k) rekapClass = k.value;
+  renderRekap();
+}
+
+/* ============================== EKSPOR & IMPOR DATA ==============================
+   Jalur cadangan versi mandiri ini: Admin mengekspor SELURUH data perangkat,
+   Guru mengekspor data miliknya saja — masing-masing satu berkas JSON.
+   Impor menggabungkan isi berkas ke data yang ada (catatan yang sudah ada
+   dilewati, tidak ditimpa). Akun TIDAK dibuat lewat impor oleh guru; impor
+   admin memulihkan akun dari berkas cadangan sebagaimana adanya. */
+function unduhBerkas(nama, konten, tipe){
+  const blob = new Blob([konten], { type: tipe });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nama;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => { try{ URL.revokeObjectURL(url); }catch(e){} }, 3000);
+}
+function eksporData(scope){
+  let data;
+  if(scope === 'admin'){
+    data = { classes: db.classes, students: db.students, attendance: db.attendance, accounts: db.accounts };
+  } else {
+    const acc = currentAccount();
+    if(!acc) return;
+    const cls = guruClasses(acc);
+    const cids = cls.map(c => c.id);
+    const sts = db.students.filter(s => cids.indexOf(s.classId) !== -1);
+    const sids = sts.map(s => s.id);
+    data = {
+      classes: cls, students: sts,
+      attendance: db.attendance.filter(a => sids.indexOf(a.studentId) !== -1),
+      accounts: db.accounts.filter(a => a.id === acc.id)
+    };
+  }
+  const paket = { app: 'absensi-siswa', jenis: 'ekspor-data', v: 1, cakupan: scope, dieksporPada: new Date().toISOString(), data: data };
+  unduhBerkas('absensi-siswa-' + scope + '-' + todayStr() + '.json', JSON.stringify(paket, null, 2), 'application/json');
+}
+/* ID yang aman untuk masuk ke atribut HTML/JS: hanya huruf, angka, '-', '_'.
+   Catatan impor ber-ID di luar pola ini dilewati (berkas ekspor resmi
+   aplikasi selalu memakai ID berpola ini). */
+function idAman(id){ return typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id); }
+function gabungData(d, scope){
+  const acc = scope === 'guru' ? currentAccount() : null;
+  const hasil = { kelas: 0, siswa: 0, absensi: 0, akun: 0, lewati: 0 };
+  const petaKelas = {};  // id kelas di berkas -> id kelas final di perangkat
+  const petaSiswa = {};  // id siswa di berkas -> id siswa final di perangkat
+
+  if(scope === 'admin' && Array.isArray(d.accounts)){
+    d.accounts.forEach(a => {
+      if(!a || !idAman(a.id) || !a.email) { hasil.lewati++; return; }
+      const bentrok = db.accounts.some(x => x.id === a.id) ||
+        db.accounts.some(x => x.email.toLowerCase() === String(a.email).toLowerCase());
+      if(bentrok){ hasil.lewati++; return; }
+      db.accounts.push({ id: a.id, email: String(a.email).slice(0, 100), phone: String(a.phone || '').slice(0, 20), role: a.role === 'guru' ? 'guru' : 'siswa', createdAt: a.createdAt || new Date().toISOString() });
+      hasil.akun++;
+    });
+  }
+
+  (Array.isArray(d.classes) ? d.classes : []).forEach(c => {
+    if(!c || !idAman(c.id) || !c.name){ hasil.lewati++; return; }
+    c = Object.assign({}, c, { name: String(c.name).slice(0, 60) });
+    const pemilik = scope === 'admin' ? (c.ownerTeacherId || null) : acc.id;
+    const sama = getClass(c.id);
+    if(sama && (scope === 'admin' || sama.ownerTeacherId === acc.id)){ petaKelas[c.id] = sama.id; hasil.lewati++; return; }
+    if(sama){ // ID bentrok dengan milik pihak lain -> buat ID baru
+      const baru = { id: newClassId(), name: String(c.name), ownerTeacherId: pemilik };
+      db.classes.push(baru); petaKelas[c.id] = baru.id; hasil.kelas++; return;
+    }
+    if(scope === 'guru'){
+      const exName = findClassByName(c.name, acc.id);
+      if(exName){ petaKelas[c.id] = exName.id; hasil.lewati++; return; }
+    }
+    db.classes.push({ id: c.id, name: String(c.name), ownerTeacherId: pemilik });
+    petaKelas[c.id] = c.id; hasil.kelas++;
+  });
+
+  (Array.isArray(d.students) ? d.students : []).forEach(s => {
+    if(!s || !idAman(s.id) || !s.name){ hasil.lewati++; return; }
+    if(getStudent(s.id)){ petaSiswa[s.id] = s.id; hasil.lewati++; return; }
+    if(scope === 'guru' && !petaKelas[s.classId]){ hasil.lewati++; return; } // kelasnya bukan milik guru ini
+    const salin = normStudent(Object.assign({}, s));
+    salin.name = String(salin.name).slice(0, 100);
+    salin.classId = petaKelas[s.classId] || (idAman(s.classId) ? s.classId : '');
+    if(!idAman(salin.ownerAccountId)) delete salin.ownerAccountId;
+    db.students.push(salin);
+    petaSiswa[s.id] = salin.id; hasil.siswa++;
+  });
+
+  (Array.isArray(d.attendance) ? d.attendance : []).forEach(a => {
+    if(!a || !a.studentId || !a.date || !a.status) return;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(a.date)) return;
+    if(['Hadir', 'Sakit', 'Izin', 'Alpa'].indexOf(a.status) === -1) return;
+    const sidFinal = petaSiswa[a.studentId];
+    if(!sidFinal) return;
+    if(recordOf(sidFinal, a.date)){ hasil.lewati++; return; }
+    db.attendance.push({ studentId: sidFinal, date: a.date, status: a.status, note: String(a.note || '').slice(0, 200), time: String(a.time || '').slice(0, 8) });
+    hasil.absensi++;
+  });
+  return hasil;
+}
+function imporData(input, scope){
+  const f = input.files && input.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = function(){
+    try{
+      const paket = JSON.parse(String(reader.result || ''));
+      if(!paket || paket.app !== 'absensi-siswa' || !paket.data) throw new Error('format tidak dikenal');
+      const h = gabungData(paket.data, scope);
+      if(!saveDBStrict()){
+        alert('❌ ' + PESAN_KUOTA);
+      } else {
+        alert('✅ Impor selesai. Ditambahkan: ' + h.kelas + ' kelas, ' + h.siswa + ' siswa, ' + h.absensi + ' catatan absensi' +
+          (scope === 'admin' ? ', ' + h.akun + ' akun' : '') + '. Dilewati karena sudah ada: ' + h.lewati + ' catatan.');
+      }
+    }catch(e){
+      alert('❌ Berkas tidak dapat diimpor. Pastikan berkas adalah hasil "Ekspor Data (JSON)" dari aplikasi Absensi Siswa.');
+    }
+    input.value = '';
+    render();
+  };
+  reader.onerror = function(){ alert('❌ Berkas tidak dapat dibaca.'); input.value = ''; };
+  reader.readAsText(f);
+}
+function eksporImporCardHtml(scope){
+  const admin = scope === 'admin';
+  return '<div class="card"><h3>💾 Ekspor &amp; Impor Data</h3>' +
+    '<p class="muted" style="margin-top:0">' +
+    (admin
+      ? 'Ekspor <b>seluruh data di perangkat ini</b> (semua akun, kelas, siswa beserta identitas &amp; dokumennya, dan semua absensi) menjadi satu berkas JSON. Impor membaca berkas hasil ekspor lalu <b>menggabungkan</b> isinya ke data perangkat ini — catatan yang sudah ada dilewati, tidak ditimpa.'
+      : 'Ekspor data <b>milik Anda</b> (kelas, siswa beserta identitas &amp; dokumennya, dan absensi di kelas Anda) menjadi satu berkas JSON. Impor membaca berkas hasil ekspor lalu <b>menggabungkan</b> isinya ke data Anda — catatan yang sudah ada dilewati, tidak ditimpa.') +
+    '<br>Versi mandiri ini menyimpan data hanya di perangkat ini, jadi <b>berkas ekspor inilah cadangannya</b> — simpan di tempat yang aman.</p>' +
+    '<div class="row">' +
+      '<button class="btn" type="button" onclick="eksporData(\'' + scope + '\')">⬇ Ekspor Data (JSON)</button>' +
+      '<label class="btn secondary" style="cursor:pointer;text-align:center">⬆ Impor Data (JSON)<input type="file" accept=".json,application/json" style="display:none" onchange="imporData(this, \'' + scope + '\')"></label>' +
+    '</div></div>';
+}
+
+/* ============================== REKAP CSV ============================== */
+function hitungBulan(studentId, ym){
+  const c = { Hadir: 0, Sakit: 0, Izin: 0, Alpa: 0 };
+  db.attendance.forEach(a => {
+    if(a.studentId === studentId && a.date.indexOf(ym) === 0 && c[a.status] != null) c[a.status]++;
+  });
+  return c;
+}
+function csvCell(v){
+  v = String(v == null ? '' : v);
+  return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function unduhRekapCSV(scope){
+  let list, ym;
+  if(scope === 'admin'){
+    ym = adminRekapMonth;
+    list = db.students.slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  } else {
+    const acc = currentAccount();
+    ym = rekapMonth;
+    const mine = guruStudents(acc);
+    list = (rekapClass ? mine.filter(s => s.classId === rekapClass) : mine)
+      .slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  }
+  if(list.length === 0){ alert('Tidak ada siswa untuk diekspor pada pilihan ini.'); return; }
+  const baris = [['Nama', 'NISN', 'Kelas', 'Hadir', 'Sakit', 'Izin', 'Alpa', '% Hadir']];
+  list.forEach(s => {
+    const c = hitungBulan(s.id, ym);
+    const t = c.Hadir + c.Sakit + c.Izin + c.Alpa;
+    baris.push([s.name, s.nis || '', className(s.classId), c.Hadir, c.Sakit, c.Izin, c.Alpa, t ? Math.round(c.Hadir / t * 100) + '%' : '-']);
+  });
+  const csv = '\ufeff' + baris.map(r => r.map(csvCell).join(';')).join('\r\n');
+  unduhBerkas('rekap-absensi-' + ym + '.csv', csv, 'text/csv;charset=utf-8');
+}
+
+/* ============================== AKUN (LOKAL) ==============================
+   Semua akun bersifat lokal-perangkat: tersimpan di localStorage peramban ini,
+   tanpa server. "Masuk" = mencocokkan email + nomor HP yang pernah didaftarkan
+   di perangkat ini. Ada dua peran akun yang dibuat sendiri oleh penggunanya
+   lewat formulir pendaftaran: 'guru' (mode Guru) dan 'siswa' (mode Siswa).
+   Satu akun siswa hanya boleh mendaftarkan SATU siswa. Akun Admin adalah
+   satu-satunya akun bawaan (lihat bagian ADMIN) — admin TIDAK membuatkan
+   akun untuk siapa pun.
+   PRIVASI: mode Siswa tidak pernah menampilkan daftar/pilihan siswa lain —
+   yang tampil hanya formulir (bila belum masuk/terdaftar) atau QR + catatan
+   milik siswa dari akun yang sedang masuk. Mode Guru hanya menampilkan
+   kelas/siswa milik guru yang sedang masuk. */
+const AKUN_KEY = 'absensiSiswa.akun';
+let sessionAccountId = null;
+try{ sessionAccountId = localStorage.getItem(AKUN_KEY) || null; }catch(e){}
+let akunMsg = null;      // {type, text} pesan di mode Siswa
+let editMine = false;    // sedang membuka menu Edit Identitas
+let daftarKeep = null;   // nilai formulir pendaftaran siswa (dipertahankan bila ditolak)
+let ubahKeep = null;     // nilai formulir Edit Identitas (dipertahankan bila ditolak)
+let regAkunKeep = null;  // nilai formulir daftar akun siswa (dipertahankan bila ditolak)
+let guruMsg = null;      // {type, text} pesan di gerbang mode Guru
+let regGuruKeep = null;  // nilai formulir daftar akun guru (dipertahankan bila ditolak)
+let dokDaftar = null;    // draf foto dokumen pada formulir pendaftaran siswa
+let dokUbah = null;      // draf foto dokumen pada formulir Edit Identitas
+
+function currentAccount(){
+  if(!sessionAccountId) return null;
+  return db.accounts.find(a => a.id === sessionAccountId) || null;
+}
+function studentOfAccount(accId){
+  return db.students.find(s => s.ownerAccountId === accId) || null;
+}
+function setSession(acc){
+  sessionAccountId = acc ? acc.id : null;
+  try{
+    if(acc) localStorage.setItem(AKUN_KEY, acc.id);
+    else localStorage.removeItem(AKUN_KEY);
+  }catch(e){}
+  // myStudentId kini berarti: siswa milik akun yang sedang masuk di perangkat ini.
+  const mine = acc ? studentOfAccount(acc.id) : null;
+  db.myStudentId = mine ? mine.id : null;
+  saveDB();
+}
+function newAccountId(){
+  let id; let tries = 0;
+  do { id = 'U' + randCode(7); tries++; } while (db.accounts.some(a => a.id === id) && tries < 50);
+  return id;
+}
+function normPhone(p){ return String(p || '').replace(/\D/g, ''); }
+function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim()); }
+
+/* ============================== ANTI-DUPLIKAT ==============================
+   Aturan pemilik aplikasi (versi final): sebuah catatan hanya ditolak bila
+   SELURUH data identitasnya persis sama dengan siswa yang sudah ada — nama,
+   NISN, nama ayah, nama ibu, anak ke berapa, alamat, NIK, email, nomor HP,
+   tempat lahir, tanggal lahir, jenis kelamin, dan kelas semuanya sama.
+   Bila hanya SEBAGIAN yang sama (misalnya nama sama, atau NISN sama saja),
+   data DITERIMA. Pemeriksaan ini tidak pernah memblokir berdasarkan satu
+   kolom saja. Dipakai di pendaftaran siswa, Edit Identitas, tambah/edit
+   siswa oleh guru, tambah banyak, impor QR, dan ubahan oleh admin. */
+function kunciIdentitas(o){
+  const t = v => String(v == null ? '' : v).trim().toLowerCase();
+  return [
+    t(o.name), t(o.nis),
+    t(o.ayah), t(o.ibu), t(o.anakKe), t(o.alamat), t(o.nik),
+    t(o.email), String(o.hp || '').replace(/\D/g, ''),
+    t(o.tempatLahir), t(o.tglLahir),
+    t(o.gender), String(o.classId || '')
+  ].join('|');
+}
+function findDuplicate(cand, excludeId){
+  const kunci = kunciIdentitas(cand);
+  return db.students.find(s => {
+    if(excludeId && s.id === excludeId) return false;
+    return kunciIdentitas(s) === kunci;
+  }) || null;
+}
+/* ============================== VALIDASI MASUKAN ==============================
+   Semua formulir divalidasi sebelum disimpan: batas panjang teks dan pola
+   angka untuk NISN/NIK/nomor HP, format email, dan tanggal lahir yang wajar.
+   Mengembalikan pesan kesalahan Bahasa Indonesia, atau null bila lolos. */
+function validasiIdentitas(v){
+  const digit = s => /^[0-9]+$/.test(s);
+  if(v.nama.length > 100) return 'Nama lengkap terlalu panjang (maks. 100 karakter).';
+  if(v.nis && !digit(v.nis)) return 'NISN hanya boleh berisi angka.';
+  if(v.nis.length > 30) return 'NISN terlalu panjang (maks. 30 angka).';
+  if(v.nik && !digit(v.nik)) return 'NIK hanya boleh berisi angka.';
+  if(v.nik && v.nik.length !== 16) return 'NIK harus tepat 16 angka (sesuai KTP/KK). Isi 16 angka atau kosongkan bila belum ada.';
+  if(v.hp && !/^[0-9]{9,15}$/.test(v.hp.replace(/[\s+\-()]/g, ''))) return 'Nomor HP harus berupa 9–15 angka.';
+  if(v.email && !validEmail(v.email)) return 'Format email pada identitas belum benar.';
+  if(v.ayah.length > 100 || v.ibu.length > 100) return 'Nama ayah/ibu terlalu panjang (maks. 100 karakter).';
+  if(v.tempatLahir.length > 60) return 'Tempat lahir terlalu panjang (maks. 60 karakter).';
+  if(v.alamat.length > 300) return 'Alamat terlalu panjang (maks. 300 karakter).';
+  if(v.anakKe && (!digit(v.anakKe) || +v.anakKe < 1 || +v.anakKe > 30)) return 'Kolom "Anak ke Berapa" harus berupa angka antara 1 dan 30.';
+  if(v.kelasLain && v.kelasLain.length > 60) return 'Nama kelas terlalu panjang (maks. 60 karakter).';
+  if(v.tglLahir){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(v.tglLahir)) return 'Tanggal lahir tidak valid.';
+    if(v.tglLahir > todayStr()) return 'Tanggal lahir tidak boleh berada di masa depan.';
+  }
+  return null;
+}
+/* Validasi ringkas untuk formulir guru (nama + NISN) dan nama kelas. */
+function validasiNamaNis(nama, nis){
+  if(nama.length > 100) return 'Nama siswa terlalu panjang (maks. 100 karakter).';
+  if(nis && !/^[0-9]+$/.test(nis)) return 'NISN hanya boleh berisi angka.';
+  if(nis.length > 30) return 'NISN terlalu panjang (maks. 30 angka).';
+  return null;
+}
+
+/* Mengembalikan pesan penolakan (Bahasa Indonesia) bila duplikat, atau null. */
+function cekDuplikat(cand, excludeId){
+  const dup = findDuplicate(cand, excludeId);
+  if(!dup) return null;
+  return 'Data ditolak karena duplikat persis: SELURUH identitas ini (nama, NISN, data orang tua, NIK, kontak, tempat/tanggal lahir, jenis kelamin, dan kelas) sama persis dengan siswa yang sudah terdaftar (' +
+    dup.name + ', NISN ' + (dup.nis || '-') + ', ' + className(dup.classId) + '). ' +
+    'Penolakan hanya terjadi bila semua data identitas sama persis — bila ada satu saja yang berbeda, data dapat disimpan.';
+}
+
+/* ============================== MODE SISWA ============================== */
+function renderSiswaMode(){
+  const el = document.getElementById('siswa-view');
+  const acc = currentAccount();
+  if(!acc || acc.role !== 'siswa'){ renderGerbangAkun(el); return; }
+  const me = studentOfAccount(acc.id);
+  if(!me){ renderDaftarSiswa(el, acc); return; }
+  renderPortalSiswa(el, acc, me);
+}
+function akunBannerHtml(){
+  return akunMsg ? '<div class="banner show ' + akunMsg.type + '">' + esc(akunMsg.text) + '</div>' : '';
+}
+function akunBarHtml(acc){
+  return '<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+    '<span class="small">👤 Masuk sebagai <b>' + esc(acc.email) + '</b></span>' +
+    '<button class="btn secondary small-btn" onclick="keluarAkun()">Keluar / Ganti Akun</button></div>';
+}
+function renderGerbangAkun(el){
+  const rk = regAkunKeep || { email:'', phone:'' };
+  const accLain = currentAccount();
+  const catatanPeran = (accLain && accLain.role !== 'siswa')
+    ? '<div class="banner info show">Anda sedang masuk sebagai akun <b>Guru</b> (' + esc(accLain.email) + '). Portal Siswa memerlukan akun Siswa — masuk dengan akun siswa Anda, atau keluar dari akun guru lewat mode Guru.</div>'
+    : '';
+  el.innerHTML =
+    catatanPeran +
+    '<div class="card"><h2>🔐 Masuk — Portal Siswa</h2>' +
+      '<p class="muted" style="margin-top:0">Portal siswa memerlukan akun. Masuk dengan email dan nomor HP yang Anda daftarkan di perangkat ini.</p>' +
+      akunBannerHtml() +
+      '<form onsubmit="return submitMasuk(event)">' +
+        '<div class="field"><label for="m-email">Email</label><input id="m-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="username"></div>' +
+        '<div class="field"><label for="m-hp">Nomor HP</label><input id="m-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel"></div>' +
+        '<button class="btn block" type="submit">Masuk</button>' +
+      '</form></div>' +
+    '<div class="card"><h3>Belum punya akun? Daftar Akun</h3>' +
+      '<p class="muted" style="margin-top:0">Buat akun dengan email dan nomor HP. Akun tersimpan hanya di perangkat ini (tanpa server) dan dipakai untuk membuka QR pribadi siswa. Satu akun hanya dapat mendaftarkan satu siswa.</p>' +
+      '<form onsubmit="return submitDaftarAkun(event)">' +
+        '<div class="field"><label for="r-email">Email</label><input id="r-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="email" value="' + esc(rk.email) + '"></div>' +
+        '<div class="field"><label for="r-hp">Nomor HP</label><input id="r-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel" value="' + esc(rk.phone) + '"></div>' +
+        '<button class="btn block" type="submit">Daftar Akun</button>' +
+      '</form>' +
+      '<p class="small muted" style="margin-bottom:0">Catatan: akun ini hanya ada di perangkat ini. Bila berganti HP, buat akun baru di HP tersebut.</p></div>';
+}
+function submitDaftarAkun(ev){
+  ev.preventDefault();
+  const email = document.getElementById('r-email').value.trim();
+  const phone = document.getElementById('r-hp').value.trim();
+  regAkunKeep = { email: email, phone: phone };
+  if(!validEmail(email)){
+    akunMsg = { type:'err', text:'Format email belum benar. Periksa kembali email Anda.' };
+    render(); return false;
+  }
+  if(normPhone(phone).length < 9){
+    akunMsg = { type:'err', text:'Nomor HP terlalu pendek. Isi nomor HP yang benar.' };
+    render(); return false;
+  }
+  if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
+    akunMsg = { type:'err', text:'Email ini sudah terdaftar di perangkat ini. Silakan masuk dengan email dan nomor HP Anda.' };
+    render(); return false;
+  }
+  const acc = { id: newAccountId(), email: email, phone: phone, role: 'siswa', createdAt: new Date().toISOString() };
+  db.accounts.push(acc);
+  regAkunKeep = null;
+  saveDB();
+  setSession(acc);
+  akunMsg = { type:'ok', text:'✅ Akun siswa dibuat dan Anda sudah masuk. Sekarang daftarkan data siswa Anda.' };
+  render();
+  return false;
+}
+function submitMasuk(ev){
+  ev.preventDefault();
+  const email = document.getElementById('m-email').value.trim().toLowerCase();
+  const phone = normPhone(document.getElementById('m-hp').value);
+  const cocok = db.accounts.find(a => a.email.toLowerCase() === email && normPhone(a.phone) === phone);
+  if(!cocok){
+    akunMsg = { type:'err', text:'Akun tidak ditemukan di perangkat ini. Periksa email dan nomor HP Anda, atau daftar akun baru di bawah.' };
+    render(); return false;
+  }
+  if(cocok.role !== 'siswa'){
+    akunMsg = { type:'err', text:'Email ini terdaftar sebagai akun Guru. Portal Siswa memerlukan akun Siswa — silakan daftar akun siswa atau masuk lewat mode Guru.' };
+    render(); return false;
+  }
+  setSession(cocok);
+  akunMsg = null;
+  render();
+  return false;
+}
+function keluarAkun(){
+  setSession(null);
+  akunMsg = null;
+  guruMsg = null;
+  editMine = false;
+  ubahKeep = null;
+  daftarKeep = null;
+  dokDaftar = null;
+  dokUbah = null;
+  render();
+}
+
+/* ============================== GERBANG AKUN GURU ==============================
+   Mode Guru juga memerlukan akun (email + nomor HP, lokal di perangkat ini).
+   Guru hanya melihat & mengelola kelas, siswa, absensi, dan rekap miliknya. */
+function renderGerbangGuru(el){
+  const rk = regGuruKeep || { email:'', phone:'' };
+  const accLain = currentAccount();
+  const catatanPeran = (accLain && accLain.role !== 'guru')
+    ? '<div class="banner info show">Anda sedang masuk sebagai akun <b>Siswa</b> (' + esc(accLain.email) + '). Mode Guru memerlukan akun Guru — masuk dengan akun guru Anda di bawah, atau daftar akun guru baru.</div>'
+    : '';
+  el.innerHTML =
+    catatanPeran +
+    '<div class="card"><h2>🔐 Masuk — Mode Guru</h2>' +
+      '<p class="muted" style="margin-top:0">Mode guru memerlukan akun. Masuk dengan email dan nomor HP yang Anda daftarkan di perangkat ini. Setiap guru hanya melihat kelas, siswa, absensi, dan rekap miliknya sendiri.</p>' +
+      (guruMsg ? '<div class="banner show ' + guruMsg.type + '">' + esc(guruMsg.text) + '</div>' : '') +
+      '<form onsubmit="return submitMasukGuru(event)">' +
+        '<div class="field"><label for="gm-email">Email</label><input id="gm-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="username"></div>' +
+        '<div class="field"><label for="gm-hp">Nomor HP</label><input id="gm-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel"></div>' +
+        '<button class="btn block" type="submit">Masuk sebagai Guru</button>' +
+      '</form></div>' +
+    '<div class="card"><h3>Belum punya akun guru? Daftar Akun Guru</h3>' +
+      '<p class="muted" style="margin-top:0">Buat akun guru dengan email dan nomor HP. Akun tersimpan hanya di perangkat ini (tanpa server). Kelas dan siswa yang Anda buat menjadi milik akun Anda dan tidak terlihat oleh guru lain di perangkat yang sama.</p>' +
+      '<form onsubmit="return submitDaftarAkunGuru(event)">' +
+        '<div class="field"><label for="gr-email">Email</label><input id="gr-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="email" value="' + esc(rk.email) + '"></div>' +
+        '<div class="field"><label for="gr-hp">Nomor HP</label><input id="gr-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel" value="' + esc(rk.phone) + '"></div>' +
+        '<button class="btn block" type="submit">Daftar Akun Guru</button>' +
+      '</form>' +
+      '<p class="small muted" style="margin-bottom:0">Catatan: akun ini hanya ada di perangkat ini. Bila berganti HP, buat akun baru di HP tersebut lalu impor data Anda lewat menu Ekspor &amp; Impor Data.</p></div>';
+}
+function submitDaftarAkunGuru(ev){
+  ev.preventDefault();
+  const email = document.getElementById('gr-email').value.trim();
+  const phone = document.getElementById('gr-hp').value.trim();
+  regGuruKeep = { email: email, phone: phone };
+  if(!validEmail(email)){
+    guruMsg = { type:'err', text:'Format email belum benar. Periksa kembali email Anda.' };
+    render(); return false;
+  }
+  if(normPhone(phone).length < 9){
+    guruMsg = { type:'err', text:'Nomor HP terlalu pendek. Isi nomor HP yang benar.' };
+    render(); return false;
+  }
+  if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
+    guruMsg = { type:'err', text:'Email ini sudah terdaftar di perangkat ini. Silakan masuk dengan email dan nomor HP Anda.' };
+    render(); return false;
+  }
+  const acc = { id: newAccountId(), email: email, phone: phone, role: 'guru', createdAt: new Date().toISOString() };
+  db.accounts.push(acc);
+  regGuruKeep = null;
+  saveDB();
+  setSession(acc);
+  guruMsg = null;
+  akunMsg = null;
+  render();
+  return false;
+}
+function submitMasukGuru(ev){
+  ev.preventDefault();
+  const email = document.getElementById('gm-email').value.trim().toLowerCase();
+  const phone = normPhone(document.getElementById('gm-hp').value);
+  const cocok = db.accounts.find(a => a.email.toLowerCase() === email && normPhone(a.phone) === phone);
+  if(!cocok){
+    guruMsg = { type:'err', text:'Akun tidak ditemukan di perangkat ini. Periksa email dan nomor HP Anda, atau daftar akun guru baru di bawah.' };
+    render(); return false;
+  }
+  if(cocok.role !== 'guru'){
+    guruMsg = { type:'err', text:'Email ini terdaftar sebagai akun Siswa. Mode Guru memerlukan akun Guru — silakan daftar akun guru atau masuk lewat mode Siswa.' };
+    render(); return false;
+  }
+  setSession(cocok);
+  guruMsg = null;
+  render();
+  return false;
+}
+
+/* ============================== DOKUMEN & IDENTITAS ==============================
+   Foto dokumen (KK, KTP ayah, KTP ibu) diperkecil dulu di peramban
+   (maks. 1000 piksel sisi terpanjang, JPEG kualitas 0,8) lalu disimpan
+   sebagai data URL di localStorage. Draf per formulir: dokDaftar (pendaftaran),
+   dokUbah (Edit Identitas), dokAdmin (ubahan oleh admin). */
+let dokAdmin = null;
+function dokKosong(){ return { kk: '', ktpAyah: '', ktpIbu: '' }; }
+function drafDok(cakupan){
+  return cakupan === 'daftar' ? dokDaftar : (cakupan === 'ubah' ? dokUbah : dokAdmin);
+}
+function kompresiFoto(file, selesai){
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = function(){
+    URL.revokeObjectURL(url);
+    const maks = 1000;
+    let w = img.naturalWidth || 1, h = img.naturalHeight || 1;
+    const skala = Math.min(1, maks / Math.max(w, h));
+    w = Math.max(1, Math.round(w * skala)); h = Math.max(1, Math.round(h * skala));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    selesai(cv.toDataURL('image/jpeg', 0.8));
+  };
+  img.onerror = function(){
+    URL.revokeObjectURL(url);
+    alert('Berkas gambar tidak dapat dibaca. Gunakan foto JPG/PNG yang wajar.');
+  };
+  img.src = url;
+}
+/* Periksa tipe berkas dari MAGIC BYTES isinya (bukan dari nama/ekstensi):
+   JPEG, PNG, GIF, WebP, atau BMP. */
+function cekMagicGambar(b){
+  if(b.length >= 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return true;
+  if(b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47 &&
+     b[4] === 0x0D && b[5] === 0x0A && b[6] === 0x1A && b[7] === 0x0A) return true;
+  if(b.length >= 4 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return true;
+  if(b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+     b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return true;
+  if(b.length >= 2 && b[0] === 0x42 && b[1] === 0x4D) return true;
+  return false;
+}
+const MAKS_UKURAN_FOTO = 10 * 1024 * 1024; // 10 MB sebelum kompresi
+function unggahDok(input, cakupan, kunci){
+  const f = input.files && input.files[0];
+  if(!f) return;
+  if(f.size > MAKS_UKURAN_FOTO){
+    alert('Berkas ditolak: ukuran foto terlalu besar (maks. 10 MB sebelum diperkecil). Pilih foto yang lebih kecil.');
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(){
+    const b = new Uint8Array(reader.result || new ArrayBuffer(0));
+    if(!cekMagicGambar(b)){
+      alert('Berkas ditolak: isinya bukan gambar yang valid. Pilih berkas foto JPG, PNG, WebP, GIF, atau BMP yang benar.');
+      input.value = '';
+      return;
+    }
+    // Lolos magic bytes; kompresiFoto juga akan gagal-baca bila gambar rusak.
+    kompresiFoto(f, function(dataUrl){
+      const draf = drafDok(cakupan);
+      if(draf) draf[kunci] = dataUrl;
+      const pv = document.getElementById(cakupan + '-prev-' + kunci);
+      if(pv){ pv.src = dataUrl; pv.style.display = ''; }
+      const tdk = document.getElementById(cakupan + '-none-' + kunci);
+      if(tdk) tdk.style.display = 'none';
+      const nm = document.getElementById(cakupan + '-nama-' + kunci);
+      if(nm) nm.textContent = 'Foto terpilih dan terkompresi — tersimpan saat formulir disimpan.';
+    });
+  };
+  reader.onerror = function(){
+    alert('Berkas tidak dapat dibaca. Coba berkas lain.');
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(f.slice(0, 16));
+}
+function hapusDok(cakupan, kunci){
+  const draf = drafDok(cakupan);
+  if(draf) draf[kunci] = '';
+  const pv = document.getElementById(cakupan + '-prev-' + kunci);
+  if(pv){ pv.removeAttribute('src'); pv.style.display = 'none'; }
+  const tdk = document.getElementById(cakupan + '-none-' + kunci);
+  if(tdk) tdk.style.display = '';
+  const inp = document.getElementById(cakupan + '-dok-' + kunci);
+  if(inp) inp.value = '';
+  const nm = document.getElementById(cakupan + '-nama-' + kunci);
+  if(nm) nm.textContent = '';
+}
+/* Hanya data URL gambar hasil kompresi aplikasi yang boleh menjadi src foto.
+   Nilai lain (misalnya dari berkas impor yang dibuat pihak lain) dibuang,
+   agar tidak ada suntikan atribut/markah lewat kolom dokumen. */
+function dokSrcAman(v){
+  return (typeof v === 'string' && v.indexOf('data:image/') === 0) ? v : '';
+}
+function dokFieldsHtml(cakupan, draf){
+  return '<div class="form-sub">Dokumen (Foto)</div>' +
+    '<p class="small muted" style="margin-top:0">Unggah foto dokumen berikut. Foto otomatis diperkecil (maks. 1000 piksel, JPEG) sebelum disimpan di perangkat ini agar penyimpanan tidak cepat penuh.</p>' +
+    '<div class="doc-grid">' + DOK_KEYS.map(k => {
+      const ada = draf && dokSrcAman(draf[k]);
+      return '<div class="doc-box"><div class="doc-lbl">' + DOK_LABEL[k] + '</div>' +
+        '<img id="' + cakupan + '-prev-' + k + '" alt="Pratinjau ' + DOK_LABEL[k] + '"' + (ada ? ' src="' + ada + '"' : ' style="display:none"') + '>' +
+        '<div class="doc-none" id="' + cakupan + '-none-' + k + '"' + (ada ? ' style="display:none"' : '') + '>Belum ada foto</div>' +
+        '<input type="file" id="' + cakupan + '-dok-' + k + '" class="inp" accept="image/*" onchange="unggahDok(this, \'' + cakupan + '\', \'' + k + '\')">' +
+        '<div class="small muted" id="' + cakupan + '-nama-' + k + '"></div>' +
+        (ada ? '<button type="button" class="btn danger small-btn" style="margin-top:6px" onclick="hapusDok(\'' + cakupan + '\', \'' + k + '\')">Hapus Foto</button>' : '') +
+      '</div>';
+    }).join('') + '</div>';
+}
+
+/* Formulir identitas lengkap — dipakai pendaftaran siswa, Edit Identitas,
+   dan ubahan oleh admin. Awalan id: 'd' (daftar), 'u' (ubah), 'adm' (admin). */
+function kelasOptionsHtml(kv){
+  let opts = '';
+  db.classes.forEach(c => { opts += '<option value="' + c.id + '"' + (kv.kelas === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; });
+  opts += '<option value="__lain__"' + (kv.kelas === '__lain__' ? ' selected' : '') + '>Kelas lain (tulis sendiri)…</option>';
+  return opts;
+}
+function kelasLainChange(p, v){
+  const w = document.getElementById(p + '-kelas-lain-wrap');
+  if(w) w.style.display = (v === '__lain__') ? '' : 'none';
+}
+function identFieldsHtml(p, kv){
+  const sel = (v, cur) => v === cur ? ' selected' : '';
+  return '' +
+  '<div class="row">' +
+    '<div class="field"><label for="' + p + '-nama">Nama Lengkap Siswa</label><input id="' + p + '-nama" class="inp" required placeholder="Nama lengkap siswa" value="' + esc(kv.nama) + '"></div>' +
+    '<div class="field"><label for="' + p + '-nis">NISN</label><input id="' + p + '-nis" class="inp" placeholder="Nomor Induk Siswa Nasional" value="' + esc(kv.nis) + '"></div>' +
+  '</div>' +
+  '<div class="row">' +
+    '<div class="field"><label for="' + p + '-tempatlahir">Tempat Lahir</label><input id="' + p + '-tempatlahir" class="inp" placeholder="Kota tempat lahir" value="' + esc(kv.tempatLahir) + '"></div>' +
+    '<div class="field"><label for="' + p + '-tgllahir">Tanggal Lahir</label><input id="' + p + '-tgllahir" type="date" class="inp" value="' + esc(kv.tglLahir) + '"></div>' +
+  '</div>' +
+  '<div class="row">' +
+    '<div class="field"><label for="' + p + '-ayah">Nama Ayah</label><input id="' + p + '-ayah" class="inp" placeholder="Nama ayah kandung" value="' + esc(kv.ayah) + '"></div>' +
+    '<div class="field"><label for="' + p + '-ibu">Nama Ibu</label><input id="' + p + '-ibu" class="inp" placeholder="Nama ibu kandung" value="' + esc(kv.ibu) + '"></div>' +
+  '</div>' +
+  '<div class="row">' +
+    '<div class="field"><label for="' + p + '-anakke">Anak ke Berapa</label><input id="' + p + '-anakke" type="number" min="1" class="inp" placeholder="Misalnya 1" value="' + esc(kv.anakKe) + '"></div>' +
+    '<div class="field"><label for="' + p + '-nik">NIK</label><input id="' + p + '-nik" class="inp" inputmode="numeric" placeholder="Nomor Induk Kependudukan" value="' + esc(kv.nik) + '"></div>' +
+  '</div>' +
+  '<div class="field"><label for="' + p + '-alamat">Alamat</label><textarea id="' + p + '-alamat" class="inp" rows="2" placeholder="Alamat tempat tinggal">' + esc(kv.alamat) + '</textarea></div>' +
+  '<div class="row">' +
+    '<div class="field"><label for="' + p + '-email">Email</label><input id="' + p + '-email" type="email" class="inp" placeholder="Email siswa / orang tua" value="' + esc(kv.email) + '"></div>' +
+    '<div class="field"><label for="' + p + '-hp">Nomor HP</label><input id="' + p + '-hp" type="tel" class="inp" placeholder="Nomor HP siswa / orang tua" value="' + esc(kv.hp) + '"></div>' +
+  '</div>' +
+  '<div class="row">' +
+    '<div class="field"><label for="' + p + '-gender">Jenis Kelamin</label><select id="' + p + '-gender" class="inp">' +
+      '<option value="Laki-laki"' + sel('Laki-laki', kv.gender) + '>Laki-laki</option>' +
+      '<option value="Perempuan"' + sel('Perempuan', kv.gender) + '>Perempuan</option></select></div>' +
+    '<div class="field"><label for="' + p + '-kelas">Kelas</label><select id="' + p + '-kelas" class="inp" onchange="kelasLainChange(\'' + p + '\', this.value)">' + kelasOptionsHtml(kv) + '</select></div>' +
+  '</div>' +
+  '<div class="field" id="' + p + '-kelas-lain-wrap" style="display:' + (kv.kelas === '__lain__' ? '' : 'none') + '"><label for="' + p + '-kelas-lain">Nama Kelas</label><input id="' + p + '-kelas-lain" class="inp" placeholder="Misalnya VII-A" value="' + esc(kv.kelasLain || '') + '"></div>';
+}
+function bacaIdentitas(p){
+  const g = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  const kv = g(p + '-kelas');
+  return {
+    nama: g(p + '-nama').trim(), nis: g(p + '-nis').trim(),
+    tempatLahir: g(p + '-tempatlahir').trim(), tglLahir: g(p + '-tgllahir'),
+    ayah: g(p + '-ayah').trim(), ibu: g(p + '-ibu').trim(),
+    anakKe: g(p + '-anakke').trim(), nik: g(p + '-nik').trim(),
+    alamat: g(p + '-alamat').trim(), email: g(p + '-email').trim(), hp: g(p + '-hp').trim(),
+    gender: g(p + '-gender'), kelas: kv,
+    kelasLain: kv === '__lain__' ? g(p + '-kelas-lain').trim() : ''
+  };
+}
+function kvDariSiswa(st){
+  return { nama: st.name || '', nis: st.nis || '', tempatLahir: st.tempatLahir || '', tglLahir: st.tglLahir || '',
+    ayah: st.ayah || '', ibu: st.ibu || '', anakKe: st.anakKe || '', nik: st.nik || '', alamat: st.alamat || '',
+    email: st.email || '', hp: st.hp || '', gender: st.gender || 'Laki-laki', kelas: st.classId, kelasLain: '' };
+}
+function kandidatDari(v, cls){
+  return { name: v.nama, nis: v.nis, tempatLahir: v.tempatLahir, tglLahir: v.tglLahir, ayah: v.ayah, ibu: v.ibu,
+    anakKe: v.anakKe, nik: v.nik, alamat: v.alamat, email: v.email, hp: v.hp, gender: v.gender,
+    classId: cls ? cls.id : '__kelas-baru__' };
+}
+function terapkanIdentitas(st, v, cls){
+  st.name = v.nama; st.nis = v.nis; st.tempatLahir = v.tempatLahir; st.tglLahir = v.tglLahir;
+  st.ayah = v.ayah; st.ibu = v.ibu; st.anakKe = v.anakKe; st.nik = v.nik; st.alamat = v.alamat;
+  st.email = v.email; st.hp = v.hp; st.gender = v.gender; st.classId = cls.id;
+}
+/* Cari kelas dari pilihan formulir; kelas baru dibuat SETELAH cek duplikat lolos. */
+function cariKelasForm(v){
+  if(v.kelas === '__lain__'){
+    if(!v.kelasLain) return { galat: 'Isi nama kelas terlebih dahulu.' };
+    return { cls: findClassByName(v.kelasLain) };
+  }
+  const cls = getClass(v.kelas);
+  if(!cls) return { galat: 'Pilih kelas terlebih dahulu.' };
+  return { cls: cls };
+}
+
+/* ---------- Pendaftaran siswa (di dalam portal, setelah masuk) ---------- */
+function renderDaftarSiswa(el, acc){
+  const kv = daftarKeep || { nama:'', nis:'', tempatLahir:'', tglLahir:'', ayah:'', ibu:'', anakKe:'', nik:'', alamat:'', email:'', hp:'', gender:'Laki-laki', kelas:'', kelasLain:'' };
+  if(!dokDaftar) dokDaftar = dokKosong();
+  el.innerHTML =
+    akunBarHtml(acc) +
+    '<div class="card"><h2>Daftarkan Data Siswa</h2>' +
+      '<p class="muted" style="margin-top:0">Satu akun hanya dapat mendaftarkan <b>satu siswa</b>. Setelah terdaftar, formulir ini terkunci — bila ada kesalahan ketik, perbaiki lewat menu <b>Edit Identitas</b>. Isi identitas selengkapnya; pendaftaran hanya ditolak bila <b>seluruh</b> identitasnya persis sama dengan siswa yang sudah terdaftar.</p>' +
+      akunBannerHtml() +
+      '<form onsubmit="return submitDaftar(event)">' +
+        identFieldsHtml('d', kv) +
+        dokFieldsHtml('daftar', dokDaftar) +
+        '<button class="btn block" type="submit" style="margin-top:14px">Daftarkan Siswa &amp; Buat QR</button>' +
+      '</form></div>';
+}
+function submitDaftar(ev){
+  ev.preventDefault();
+  const acc = currentAccount();
+  if(!acc || acc.role !== 'siswa') return false;
+  if(studentOfAccount(acc.id)){
+    akunMsg = { type:'err', text:'Akun Anda sudah memiliki satu siswa terdaftar. Satu akun hanya boleh mendaftarkan satu siswa.' };
+    render(); return false;
+  }
+  const v = bacaIdentitas('d');
+  daftarKeep = v;
+  if(!v.nama) return false;
+  const salahD = validasiIdentitas(v);
+  if(salahD){
+    akunMsg = { type:'err', text:'❌ Data belum valid: ' + salahD };
+    render(); return false;
+  }
+  const hasil = cariKelasForm(v);
+  if(hasil.galat){ alert(hasil.galat); return false; }
+  let cls = hasil.cls;
+  const dupMsg = cekDuplikat(kandidatDari(v, cls), null);
+  if(dupMsg){
+    akunMsg = { type:'err', text:'❌ ' + dupMsg };
+    render(); return false;
+  }
+  let kelasBaru = null;
+  if(!cls){
+    kelasBaru = { id: newClassId(), name: v.kelasLain, ownerTeacherId: null };
+    cls = kelasBaru;
+  }
+  const st = normStudent({ id: newStudentId(), ownerAccountId: acc.id });
+  terapkanIdentitas(st, v, cls);
+  st.dokumen = Object.assign(dokKosong(), dokDaftar || {});
+  if(kelasBaru) db.classes.push(kelasBaru);
+  db.students.push(st);
+  if(!saveDBStrict()){
+    // Kuota penuh: batalkan penambahan agar data tidak setengah tersimpan.
+    db.students = db.students.filter(s => s.id !== st.id);
+    if(kelasBaru) db.classes = db.classes.filter(c => c.id !== kelasBaru.id);
+    akunMsg = { type:'err', text:'❌ ' + PESAN_KUOTA };
+    render(); return false;
+  }
+  daftarKeep = null;
+  dokDaftar = null;
+  setSession(acc);
+  akunMsg = { type:'ok', text:'✅ Pendaftaran berhasil. QR pribadi siswa sudah siap di bawah.' };
+  render();
+  return false;
+}
+
+/* ---------- Portal siswa (akun masuk + siswa terdaftar) ---------- */
+function renderPortalSiswa(el, acc, me){
+  const recs = db.attendance
+    .filter(a => a.studentId === me.id)
+    .slice()
+    .sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')));
+  let hist;
+  if(recs.length === 0){
+    hist = '<p class="muted">Belum ada catatan kehadiran yang tersimpan di perangkat ini.</p>';
+  } else {
+    hist = recs.map(r =>
+      '<div class="hist-row"><span>' + fmtTgl(r.date) +
+      (r.time ? ' <span class="muted small">• ' + esc(r.time) + '</span>' : '') +
+      (r.note ? '<div class="small muted">' + esc(r.note) + '</div>' : '') +
+      '</span><span class="status-dot ' + esc(r.status) + '">' + esc(r.status) + '</span></div>'
+    ).join('');
+  }
+
+  let editHtml = '';
+  if(editMine){
+    const kv = ubahKeep || kvDariSiswa(me);
+    if(!dokUbah) dokUbah = Object.assign(dokKosong(), me.dokumen || {});
+    editHtml =
+      '<div class="card"><h3>✏️ Edit Identitas</h3>' +
+        '<p class="muted" style="margin-top:0">Perbaiki nama dan data siswa Anda bila ada kesalahan ketik. Ubahan hanya ditolak bila <b>seluruh</b> identitas hasil ubahan persis sama dengan siswa lain; bila ada satu saja yang berbeda, ubahan tersimpan seperti biasa.</p>' +
+        '<form onsubmit="return submitUbahSaya(event)">' +
+          identFieldsHtml('u', kv) +
+          dokFieldsHtml('ubah', dokUbah) +
+          '<div class="row" style="margin-top:14px"><button class="btn" type="submit">💾 Simpan Perubahan</button>' +
+          '<button class="btn secondary" type="button" onclick="batalEditIdentitas()">Batal</button></div>' +
+        '</form></div>';
+  }
+
+  el.innerHTML =
+    akunBarHtml(acc) +
+    akunBannerHtml() +
+    editHtml +
+    '<div class="card qr-big"><h2>QR Saya</h2>' +
+      '<p class="muted" style="margin-top:0">Tunjukkan QR ini kepada guru untuk dicatat kehadirannya. QR ini hanya tampil untuk akun pemilik pendaftaran ini.</p>' +
+      '<canvas id="my-qr"></canvas>' +
+      '<div style="font-weight:800;font-size:18px;margin-top:10px">' + esc(me.name) + '</div>' +
+      '<div class="muted">NISN ' + esc(me.nis || '-') + ' • ' + esc(className(me.classId)) + '</div>' +
+      '<div class="muted small">ID: ' + esc(me.id) + '</div>' +
+      '<div class="row" style="margin-top:12px">' +
+        '<button class="btn" onclick="unduhQR(\'' + me.id + '\')">⬇ Unduh QR</button>' +
+        '<button class="btn secondary" onclick="mulaiEditIdentitas()">✏️ Edit Identitas</button>' +
+      '</div>' +
+      '<button class="btn secondary block" style="margin-top:10px" onclick="openDetailSiswa(\'' + me.id + '\')">👁 Lihat Detail Identitas &amp; Dokumen Saya</button>' +
+    '</div>' +
+    '<div class="card"><h3>Kehadiran Saya</h3>' + hist +
+      '<p class="small muted" style="margin-bottom:0">Catatan di atas hanya yang tersimpan di perangkat ini. Kehadiran yang dicatat atau dipindai di perangkat guru tersimpan di perangkat guru, jadi mungkin tidak tampil di sini.</p>' +
+    '</div>';
+  drawQR(document.getElementById('my-qr'), qrPayload(me), 9);
+}
+function mulaiEditIdentitas(){
+  editMine = true;
+  ubahKeep = null;
+  dokUbah = null;
+  akunMsg = null;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function batalEditIdentitas(){
+  editMine = false;
+  ubahKeep = null;
+  dokUbah = null;
+  render();
+}
+function submitUbahSaya(ev){
+  ev.preventDefault();
+  const acc = currentAccount();
+  const me = acc ? studentOfAccount(acc.id) : null;
+  if(!me) return false;
+  const v = bacaIdentitas('u');
+  ubahKeep = v;
+  if(!v.nama) return false;
+  const salahU = validasiIdentitas(v);
+  if(salahU){
+    akunMsg = { type:'err', text:'❌ Data belum valid: ' + salahU };
+    render(); return false;
+  }
+  const hasil = cariKelasForm(v);
+  if(hasil.galat){ alert(hasil.galat); return false; }
+  let cls = hasil.cls;
+  const dupMsg = cekDuplikat(kandidatDari(v, cls), me.id);
+  if(dupMsg){
+    akunMsg = { type:'err', text:'❌ ' + dupMsg };
+    render(); return false;
+  }
+  let kelasBaru = null;
+  if(!cls){
+    kelasBaru = { id: newClassId(), name: v.kelasLain, ownerTeacherId: null };
+    cls = kelasBaru;
+  }
+  const cadangan = JSON.stringify(me);
+  if(kelasBaru) db.classes.push(kelasBaru);
+  terapkanIdentitas(me, v, cls);
+  if(dokUbah) me.dokumen = Object.assign(dokKosong(), dokUbah);
+  if(!saveDBStrict()){
+    // Kuota penuh: kembalikan data lama agar tidak setengah tersimpan.
+    const pulih = JSON.parse(cadangan);
+    Object.keys(me).forEach(k => delete me[k]);
+    Object.assign(me, pulih);
+    if(kelasBaru) db.classes = db.classes.filter(c => c.id !== kelasBaru.id);
+    akunMsg = { type:'err', text:'❌ ' + PESAN_KUOTA };
+    render(); return false;
+  }
+  editMine = false;
+  ubahKeep = null;
+  dokUbah = null;
+  akunMsg = { type:'ok', text:'✅ Identitas berhasil diperbarui.' };
+  render();
+  return false;
+}
+
+/* ============================== ADMIN ==============================
+   Satu-satunya akun bawaan aplikasi. Kredensial admin tertanam di kode
+   halaman ini — gerbang akses ringan untuk versi mandiri yang halamannya
+   publik, BUKAN keamanan yang kuat — dan tidak pernah ditampilkan di UI.
+   Admin memegang seluruh data perangkat: melihat & mengubah semua akun,
+   kelas, siswa (identitas lengkap + dokumen + QR), absensi, dan rekap;
+   membuka wilayah akun guru/siswa mana pun tanpa masuk sebagai mereka;
+   tidak terikat aturan satu-pendaftaran maupun pemisahan data antar-guru.
+   Admin TIDAK membuatkan akun guru/siswa untuk siapa pun — semua akun
+   selain Admin dibuat sendiri oleh penggunanya lewat formulir pendaftaran.
+   (Menambah catatan siswa ke daftar kelas oleh guru adalah data kelas,
+   bukan akun masuk.) */
+const ADMIN_USER = 'Namexs';
+const ADMIN_PASS = 'Rijal140703';
+const ADMIN_KEY = 'absensiSiswa.admin';
+let adminLogin = false;
+try{ adminLogin = localStorage.getItem(ADMIN_KEY) === '1'; }catch(e){}
+let adminMsg = null;
+let adminView = 'ringkasan';   // ringkasan | guru | siswa | kelas | rekap
+let adminGuruId = null;
+let adminEditId = null;
+let adminUbahKeep = null;
+let adminRekapMonth = todayStr().slice(0, 7);
+
+function renderAdminMode(){
+  const el = document.getElementById('admin-view');
+  if(!adminLogin){ renderLoginAdmin(el); return; }
+  renderPanelAdmin(el);
+}
+function renderLoginAdmin(el){
+  el.innerHTML =
+    '<div class="card"><h2>🛡 Masuk — Admin</h2>' +
+      '<p class="muted" style="margin-top:0">Area khusus pemilik aplikasi. Masuk dengan akun admin bawaan untuk melihat dan mengelola seluruh data di perangkat ini.</p>' +
+      (adminMsg ? '<div class="banner show ' + adminMsg.type + '">' + esc(adminMsg.text) + '</div>' : '') +
+      '<form onsubmit="return submitLoginAdmin(event)">' +
+        '<div class="field"><label for="adm-user">Nama Pengguna Admin</label><input id="adm-user" class="inp" required autocomplete="username" placeholder="Nama pengguna"></div>' +
+        '<div class="field"><label for="adm-pass">Kata Sandi Admin</label><input id="adm-pass" type="password" class="inp" required autocomplete="current-password" placeholder="Kata sandi"></div>' +
+        '<button class="btn block" type="submit">Masuk sebagai Admin</button>' +
+      '</form>' +
+      '<p class="small muted" style="margin-bottom:0">Akun guru dan akun siswa tidak dibuatkan oleh admin — masing-masing mendaftar sendiri lewat mode Guru / mode Siswa.</p></div>';
+}
+function submitLoginAdmin(ev){
+  ev.preventDefault();
+  const u = document.getElementById('adm-user').value;
+  const p = document.getElementById('adm-pass').value;
+  if(u === ADMIN_USER && p === ADMIN_PASS){
+    adminLogin = true;
+    try{ localStorage.setItem(ADMIN_KEY, '1'); }catch(e){}
+    adminMsg = null;
+    adminView = 'ringkasan';
+    adminEditId = null;
+  } else {
+    adminMsg = { type:'err', text:'Nama pengguna atau kata sandi admin salah. Periksa kembali dan coba lagi.' };
+  }
+  render();
+  return false;
+}
+function keluarAdmin(){
+  adminLogin = false;
+  try{ localStorage.removeItem(ADMIN_KEY); }catch(e){}
+  adminMsg = null;
+  adminGuruId = null;
+  adminEditId = null;
+  adminUbahKeep = null;
+  dokAdmin = null;
+  render();
+}
+function adminNav(v){
+  adminView = v;
+  if(v !== 'siswa'){ adminEditId = null; adminUbahKeep = null; dokAdmin = null; }
+  adminMsg = null;
+  render();
+}
+function adminBukaGuru(id){ adminGuruId = id; adminView = 'guru'; render(); }
+
+function renderPanelAdmin(el){
+  const guruAccs = db.accounts.filter(a => a.role === 'guru');
+  const siswaAccs = db.accounts.filter(a => a.role === 'siswa');
+  const navBtn = (v, label) =>
+    '<button class="' + (adminView === v ? 'btn' : 'btn secondary') + ' small-btn" onclick="adminNav(\'' + v + '\')">' + label + '</button>';
+  let body = '';
+  if(adminView === 'guru') body = adminGuruHtml(guruAccs);
+  else if(adminView === 'siswa') body = adminSiswaHtml();
+  else if(adminView === 'kelas') body = adminKelasHtml();
+  else if(adminView === 'rekap') body = adminRekapHtml();
+  else body = adminRingkasanHtml(guruAccs, siswaAccs);
+  el.innerHTML =
+    '<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+      '<span class="small">🛡 Masuk sebagai <b>Admin</b><span class="badge-admin">AKSES PENUH</span></span>' +
+      '<button class="btn secondary small-btn" onclick="keluarAdmin()">Keluar Admin</button></div>' +
+    '<div class="tabs">' + navBtn('ringkasan', '📋 Ringkasan') + navBtn('guru', '👩‍🏫 Akun Guru') +
+      navBtn('siswa', '👥 Semua Siswa') + navBtn('kelas', '🏫 Semua Kelas') + navBtn('rekap', '📊 Rekap Semua') + '</div>' +
+    (adminMsg && adminView !== 'siswa' ? '<div class="banner show ' + adminMsg.type + '">' + esc(adminMsg.text) + '</div>' : '') +
+    body +
+    (adminView === 'ringkasan' ? eksporImporCardHtml('admin') : '');
+}
+function adminRingkasanHtml(guruAccs, siswaAccs){
+  const tgl = todayStr();
+  let hadirIni = 0;
+  db.attendance.forEach(a => { if(a.date === tgl && a.status === 'Hadir') hadirIni++; });
+  return '<div class="card"><h2>Ringkasan Seluruh Data</h2>' +
+    '<div class="stat-grid">' +
+      '<div class="stat"><div class="num">' + guruAccs.length + '</div><div class="lbl">Akun Guru</div></div>' +
+      '<div class="stat"><div class="num">' + siswaAccs.length + '</div><div class="lbl">Akun Siswa</div></div>' +
+      '<div class="stat"><div class="num">' + db.classes.length + '</div><div class="lbl">Kelas</div></div>' +
+      '<div class="stat"><div class="num">' + db.students.length + '</div><div class="lbl">Siswa Terdaftar</div></div>' +
+      '<div class="stat hadir"><div class="num">' + hadirIni + '</div><div class="lbl">Hadir Hari Ini</div></div>' +
+      '<div class="stat"><div class="num">' + db.attendance.length + '</div><div class="lbl">Total Catatan Absensi</div></div>' +
+    '</div>' +
+    '<p class="small muted" style="margin-bottom:0">Dari panel ini admin dapat membuka wilayah akun guru mana pun dan data siswa mana pun — termasuk melihat QR siswa dan mengubah datanya — tanpa perlu masuk sebagai mereka.</p></div>' +
+    '<div class="card"><h3>👩‍🏫 Akun Guru Terdaftar</h3>' +
+      (guruAccs.length ? guruAccs.map(a => {
+        return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(a.email) + '</span>' +
+          '<div class="sub">HP ' + esc(a.phone) + ' • ' + guruClasses(a).length + ' kelas • ' + guruStudents(a).length + ' siswa</div></div>' +
+          '<div class="icon-btns"><button class="btn small-btn" onclick="adminBukaGuru(\'' + a.id + '\')">Buka Wilayah Guru</button></div></div>';
+      }).join('') : '<p class="muted">Belum ada akun guru yang mendaftar di perangkat ini.</p>') + '</div>' +
+    '<div class="card"><h3>🎓 Akun Siswa Terdaftar</h3>' +
+      (siswaAccs.length ? siswaAccs.map(a => {
+        const st = studentOfAccount(a.id);
+        return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(a.email) + '</span>' +
+          '<div class="sub">HP ' + esc(a.phone) + (st ? ' • Siswa: ' + esc(st.name) + ' (' + esc(className(st.classId)) + ')' : ' • Belum mendaftarkan siswa') + '</div></div>' +
+          (st ? '<div class="icon-btns"><button class="btn small-btn" onclick="openQRModal(\'' + st.id + '\')">QR Siswa</button>' +
+            '<button class="btn secondary small-btn" onclick="openDetailSiswa(\'' + st.id + '\')">Detail</button>' +
+            '<button class="btn secondary small-btn" onclick="adminMulaiUbah(\'' + st.id + '\')">Ubah</button></div>' : '') + '</div>';
+      }).join('') : '<p class="muted">Belum ada akun siswa yang mendaftar di perangkat ini.</p>') + '</div>';
+}
+function barisSiswaAdmin(s){
+  return '<div class="student-row">' +
+    '<div class="student-info"><span class="nm">' + esc(s.name) + '</span>' +
+    '<div class="sub">NISN ' + esc(s.nis || '-') + (s.gender ? ' • ' + esc(s.gender) : '') + ' • ' + esc(className(s.classId)) + ' • ID ' + esc(s.id) + '</div></div>' +
+    '<div class="icon-btns">' +
+      '<button class="btn small-btn" onclick="openQRModal(\'' + s.id + '\')">QR</button>' +
+      '<button class="btn secondary small-btn" onclick="openDetailSiswa(\'' + s.id + '\')">Detail</button>' +
+      '<button class="btn secondary small-btn" onclick="adminMulaiUbah(\'' + s.id + '\')">Ubah</button>' +
+      '<button class="btn danger small-btn" onclick="adminHapusSiswa(\'' + s.id + '\')">Hapus</button>' +
+    '</div></div>';
+}
+function adminGuruHtml(guruAccs){
+  if(!guruAccs.length) return '<div class="card"><p class="muted">Belum ada akun guru di perangkat ini.</p></div>';
+  const acc = guruAccs.find(a => a.id === adminGuruId) || guruAccs[0];
+  adminGuruId = acc.id;
+  const kelas = guruClasses(acc);
+  const murid = guruStudents(acc);
+  const tgl = todayStr();
+  let hadir = 0, tercatat = 0;
+  murid.forEach(s => { const r = recordOf(s.id, tgl); if(r){ tercatat++; if(r.status === 'Hadir') hadir++; } });
+  let h = '<div class="card"><h2>Wilayah Akun Guru</h2>' +
+    '<div class="field"><label for="adm-guru-pilih">Pilih Akun Guru</label><select id="adm-guru-pilih" class="inp" onchange="adminBukaGuru(this.value)">' +
+    guruAccs.map(a => '<option value="' + a.id + '"' + (a.id === acc.id ? ' selected' : '') + '>' + esc(a.email) + ' — ' + esc(a.phone) + '</option>').join('') +
+    '</select></div>' +
+    '<p class="muted" style="margin:0">Guru ini memiliki <b>' + kelas.length + ' kelas</b> dan <b>' + murid.length + ' siswa</b>. Hari ini: ' + tercatat + ' tercatat, ' + hadir + ' hadir. Sebagai admin Anda dapat melihat dan mengubah data mereka dari sini.</p></div>';
+  if(!kelas.length) h += '<div class="card"><p class="muted">Guru ini belum membuat kelas.</p></div>';
+  kelas.forEach(c => {
+    const list = murid.filter(s => s.classId === c.id).slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    h += '<div class="card"><h3>🏫 ' + esc(c.name) + ' <span class="muted small">(' + list.length + ' siswa)</span></h3>' +
+      (list.length ? list.map(barisSiswaAdmin).join('') : '<p class="muted">Belum ada siswa di kelas ini.</p>') + '</div>';
+  });
+  return h;
+}
+function adminSiswaHtml(){
+  let h = '';
+  if(adminEditId){
+    const st = getStudent(adminEditId);
+    if(st){
+      const kv = adminUbahKeep || kvDariSiswa(st);
+      if(!dokAdmin) dokAdmin = Object.assign(dokKosong(), st.dokumen || {});
+      h += '<div class="card"><h3>✏️ Ubah Siswa (Admin): ' + esc(st.name) + '</h3>' +
+        '<p class="muted" style="margin-top:0">Admin dapat mengubah data siswa mana pun, termasuk identitas lengkap dan dokumennya. Aturan anti-duplikat seluruh identitas tetap berlaku.</p>' +
+        (adminMsg ? '<div class="banner show ' + adminMsg.type + '">' + esc(adminMsg.text) + '</div>' : '') +
+        '<form onsubmit="return submitAdminUbahSiswa(event)">' +
+          identFieldsHtml('adm', kv) +
+          dokFieldsHtml('admin', dokAdmin) +
+          '<div class="row" style="margin-top:14px"><button class="btn" type="submit">💾 Simpan Perubahan</button>' +
+          '<button class="btn secondary" type="button" onclick="adminBatalUbah()">Batal</button></div>' +
+        '</form></div>';
+    }
+  }
+  const list = db.students.slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  h += '<div class="card"><h3>👥 Semua Siswa di Perangkat Ini (' + list.length + ')</h3>' +
+    (list.length ? list.map(barisSiswaAdmin).join('') : '<p class="muted">Belum ada siswa terdaftar.</p>') + '</div>';
+  return h;
+}
+function adminMulaiUbah(sid){
+  adminEditId = sid; adminUbahKeep = null; dokAdmin = null; adminMsg = null;
+  adminView = 'siswa';
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function adminBatalUbah(){
+  adminEditId = null; adminUbahKeep = null; dokAdmin = null; adminMsg = null;
+  render();
+}
+function submitAdminUbahSiswa(ev){
+  ev.preventDefault();
+  const st = getStudent(adminEditId);
+  if(!st) return false;
+  const v = bacaIdentitas('adm');
+  adminUbahKeep = v;
+  if(!v.nama) return false;
+  const salahA = validasiIdentitas(v);
+  if(salahA){
+    adminMsg = { type:'err', text:'❌ Data belum valid: ' + salahA };
+    render(); return false;
+  }
+  const hasil = cariKelasForm(v);
+  if(hasil.galat){ alert(hasil.galat); return false; }
+  let cls = hasil.cls;
+  const dupMsg = cekDuplikat(kandidatDari(v, cls), st.id);
+  if(dupMsg){ adminMsg = { type:'err', text:'❌ ' + dupMsg }; render(); return false; }
+  let kelasBaru = null;
+  if(!cls){ kelasBaru = { id: newClassId(), name: v.kelasLain, ownerTeacherId: null }; cls = kelasBaru; }
+  const cadangan = JSON.stringify(st);
+  if(kelasBaru) db.classes.push(kelasBaru);
+  terapkanIdentitas(st, v, cls);
+  if(dokAdmin) st.dokumen = Object.assign(dokKosong(), dokAdmin);
+  if(!saveDBStrict()){
+    const pulih = JSON.parse(cadangan);
+    Object.keys(st).forEach(k => delete st[k]);
+    Object.assign(st, pulih);
+    if(kelasBaru) db.classes = db.classes.filter(c => c.id !== kelasBaru.id);
+    adminMsg = { type:'err', text:'❌ ' + PESAN_KUOTA };
+    render(); return false;
+  }
+  adminEditId = null; adminUbahKeep = null; dokAdmin = null; adminMsg = null;
+  render();
+  return false;
+}
+function adminHapusSiswa(sid){
+  const st = getStudent(sid);
+  if(!st) return;
+  if(!confirm('Hapus siswa "' + st.name + '" beserta catatan kehadirannya? (Tindakan admin)')) return;
+  db.students = db.students.filter(s => s.id !== sid);
+  db.attendance = db.attendance.filter(a => a.studentId !== sid);
+  if(adminEditId === sid) adminEditId = null;
+  saveDB();
+  render();
+}
+function adminKelasHtml(){
+  if(!db.classes.length) return '<div class="card"><p class="muted">Belum ada kelas di perangkat ini.</p></div>';
+  return '<div class="card"><h3>🏫 Semua Kelas di Perangkat Ini (' + db.classes.length + ')</h3>' +
+    db.classes.map(c => {
+      const pemilik = c.ownerTeacherId ? db.accounts.find(a => a.id === c.ownerTeacherId) : null;
+      const n = db.students.filter(s => s.classId === c.id).length;
+      return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(c.name) + '</span>' +
+        '<div class="sub">' + n + ' siswa • Pemilik: ' + (pemilik ? esc(pemilik.email) : '— (dari pendaftaran siswa / tanpa guru)') + '</div></div></div>';
+    }).join('') + '</div>';
+}
+function adminRekapHtml(){
+  const ym = adminRekapMonth;
+  const list = db.students.slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  const tot = { Hadir: 0, Sakit: 0, Izin: 0, Alpa: 0 };
+  let rows = '';
+  list.forEach(s => {
+    const c = hitungBulan(s.id, ym);
+    const t = c.Hadir + c.Sakit + c.Izin + c.Alpa;
+    tot.Hadir += c.Hadir; tot.Sakit += c.Sakit; tot.Izin += c.Izin; tot.Alpa += c.Alpa;
+    rows += '<tr><td>' + esc(s.name) + '<div class="sub small muted">' + esc(className(s.classId)) + '</div></td>' +
+      '<td class="num">' + c.Hadir + '</td><td class="num">' + c.Sakit + '</td>' +
+      '<td class="num">' + c.Izin + '</td><td class="num">' + c.Alpa + '</td>' +
+      '<td class="num"><b>' + (t ? Math.round(c.Hadir / t * 100) + '%' : '-') + '</b></td></tr>';
+  });
+  if(!rows) rows = '<tr><td colspan="6" class="muted">Belum ada siswa.</td></tr>';
+  const totAll = tot.Hadir + tot.Sakit + tot.Izin + tot.Alpa;
+  return '<div class="card"><h2>Rekap Semua Siswa</h2>' +
+    '<p class="muted" style="margin-top:0">Rekap bulan <b>' + fmtBulan(ym) + '</b> untuk seluruh siswa dari semua guru di perangkat ini.</p>' +
+    '<div class="row"><div class="field"><label for="adm-rekap-bulan">Bulan</label><input id="adm-rekap-bulan" type="month" class="inp" value="' + ym + '" onchange="adminRekapChange(this.value)"></div></div>' +
+    '<div style="margin-bottom:12px"><button class="btn secondary" onclick="unduhRekapCSV(\'admin\')">⬇ Unduh Rekap CSV (Semua Siswa)</button></div>' +
+    '<div class="table-wrap"><table><thead><tr><th>Siswa</th><th class="num">Hadir</th><th class="num">Sakit</th><th class="num">Izin</th><th class="num">Alpa</th><th class="num">% Hadir</th></tr></thead>' +
+    '<tbody>' + rows +
+    '<tr class="total"><td>Total</td><td class="num">' + tot.Hadir + '</td><td class="num">' + tot.Sakit + '</td>' +
+    '<td class="num">' + tot.Izin + '</td><td class="num">' + tot.Alpa + '</td><td class="num">' + (totAll ? Math.round(tot.Hadir / totAll * 100) + '%' : '-') + '</td></tr>' +
+    '</tbody></table></div></div>';
+}
+function adminRekapChange(v){ if(v) adminRekapMonth = v; render(); }
+
+/* ============================== MULAI ============================== */
+absenLoadDraft();
+setSession(currentAccount());
+render();
+// Daftarkan service worker agar aplikasi bisa dibuka tanpa internet (hanya via http/https).
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
