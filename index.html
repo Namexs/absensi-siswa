@@ -179,7 +179,7 @@
   <header>
     <div class="header-in">
       <div class="brand"><span class="logo"><img src="icon-192.png" alt=""></span> Absensi Siswa</div>
-      <div class="mode-toggle" role="tablist" aria-label="Pilih mode">
+      <div class="mode-toggle" id="mode-switcher" role="tablist" aria-label="Pilih mode">
         <button id="mode-guru" onclick="setMode('guru')">Guru</button>
         <button id="mode-siswa" onclick="setMode('siswa')">Siswa</button>
         <button id="mode-admin" onclick="setMode('admin')">Admin</button>
@@ -250,6 +250,7 @@ function loadDB(){
       const d = JSON.parse(raw);
       if(d && Array.isArray(d.classes) && Array.isArray(d.students) && Array.isArray(d.attendance)){
         if(!Array.isArray(d.accounts)) d.accounts = [];
+        if(!Array.isArray(d.tokens)) d.tokens = [];
         // Akun lama (dibuat sebelum ada peran) dianggap akun Siswa.
         d.accounts.forEach(a => { if(!a.role) a.role = 'siswa'; });
         // Kelas lama belum punya pemilik guru.
@@ -259,7 +260,7 @@ function loadDB(){
       }
     }
   }catch(e){}
-  return { classes:[], students:[], attendance:[], accounts:[], myStudentId:null };
+  return { classes:[], students:[], attendance:[], accounts:[], tokens:[], myStudentId:null };
 }
 let db = loadDB();
 function saveDB(){ try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){} }
@@ -403,6 +404,12 @@ function switchTab(t){
   render();
 }
 function render(){
+  // Pemilih mode (Guru | Siswa | Admin) hanya tampil di halaman awal.
+  // Begitu pengguna masuk ke portal mana pun (Admin/Guru/Siswa), pemilih
+  // disembunyikan agar layar fokus pada portal itu saja — tab internal
+  // portal tetap tampil. Pemilih muncul lagi setelah pengguna keluar.
+  const swEl = document.getElementById('mode-switcher');
+  if(swEl) swEl.style.display = (adminLogin || currentAccount()) ? 'none' : '';
   document.getElementById('mode-guru').classList.toggle('active', mode === 'guru');
   document.getElementById('mode-siswa').classList.toggle('active', mode === 'siswa');
   document.getElementById('mode-admin').classList.toggle('active', mode === 'admin');
@@ -1242,7 +1249,7 @@ function unduhBerkas(nama, konten, tipe){
 function eksporData(scope){
   let data;
   if(scope === 'admin'){
-    data = { classes: db.classes, students: db.students, attendance: db.attendance, accounts: db.accounts };
+    data = { classes: db.classes, students: db.students, attendance: db.attendance, accounts: db.accounts, tokens: db.tokens };
   } else {
     const acc = currentAccount();
     if(!acc) return;
@@ -1265,7 +1272,7 @@ function eksporData(scope){
 function idAman(id){ return typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id); }
 function gabungData(d, scope){
   const acc = scope === 'guru' ? currentAccount() : null;
-  const hasil = { kelas: 0, siswa: 0, absensi: 0, akun: 0, lewati: 0 };
+  const hasil = { kelas: 0, siswa: 0, absensi: 0, akun: 0, token: 0, lewati: 0 };
   const petaKelas = {};  // id kelas di berkas -> id kelas final di perangkat
   const petaSiswa = {};  // id siswa di berkas -> id siswa final di perangkat
 
@@ -1275,8 +1282,29 @@ function gabungData(d, scope){
       const bentrok = db.accounts.some(x => x.id === a.id) ||
         db.accounts.some(x => x.email.toLowerCase() === String(a.email).toLowerCase());
       if(bentrok){ hasil.lewati++; return; }
-      db.accounts.push({ id: a.id, email: String(a.email).slice(0, 100), phone: String(a.phone || '').slice(0, 20), role: a.role === 'guru' ? 'guru' : 'siswa', createdAt: a.createdAt || new Date().toISOString() });
+      const rec = { id: a.id, email: String(a.email).slice(0, 100), phone: String(a.phone || '').slice(0, 20), role: a.role === 'guru' ? 'guru' : 'siswa', createdAt: a.createdAt || new Date().toISOString() };
+      // Kredensial kata sandi (garam + hash) ikut dipulihkan bila bentuknya sah;
+      // akun cadangan lama tanpa hash menjadi akun warisan (membuat kata sandi
+      // pada masuk berikutnya), bukan akun tanpa perlindungan.
+      if(typeof a.passSalt === 'string' && /^[0-9a-f]{16,64}$/i.test(a.passSalt) &&
+         typeof a.passHash === 'string' && /^f?[0-9a-f]{16,128}$/i.test(a.passHash)){
+        rec.passSalt = a.passSalt;
+        rec.passHash = a.passHash;
+      }
+      db.accounts.push(rec);
       hasil.akun++;
+    });
+  }
+
+  if(scope === 'admin' && Array.isArray(d.tokens)){
+    d.tokens.forEach(t => {
+      if(!t || typeof t.code !== 'string'){ hasil.lewati++; return; }
+      const code = normToken(t.code);
+      if(!/^[A-Z0-9]{5,7}$/.test(code)){ hasil.lewati++; return; }
+      if(db.tokens.some(x => x.code === code)){ hasil.lewati++; return; }
+      const peran = t.role === 'guru' ? 'guru' : (t.role === 'siswa' ? 'siswa' : (code.length >= 7 ? 'guru' : 'siswa'));
+      db.tokens.push({ code: code, role: peran, createdAt: t.createdAt || new Date().toISOString(), usedBy: idAman(t.usedBy) ? t.usedBy : null, usedAt: t.usedAt || null, revoked: !!t.revoked });
+      hasil.token++;
     });
   }
 
@@ -1335,7 +1363,7 @@ function imporData(input, scope){
         alert('❌ ' + PESAN_KUOTA);
       } else {
         alert('✅ Impor selesai. Ditambahkan: ' + h.kelas + ' kelas, ' + h.siswa + ' siswa, ' + h.absensi + ' catatan absensi' +
-          (scope === 'admin' ? ', ' + h.akun + ' akun' : '') + '. Dilewati karena sudah ada: ' + h.lewati + ' catatan.');
+          (scope === 'admin' ? ', ' + h.akun + ' akun, ' + h.token + ' token' : '') + '. Dilewati karena sudah ada: ' + h.lewati + ' catatan.');
       }
     }catch(e){
       alert('❌ Berkas tidak dapat diimpor. Pastikan berkas adalah hasil "Ekspor Data (JSON)" dari aplikasi Absensi Siswa.');
@@ -1397,12 +1425,23 @@ function unduhRekapCSV(scope){
 
 /* ============================== AKUN (LOKAL) ==============================
    Semua akun bersifat lokal-perangkat: tersimpan di localStorage peramban ini,
-   tanpa server. "Masuk" = mencocokkan email + nomor HP yang pernah didaftarkan
-   di perangkat ini. Ada dua peran akun yang dibuat sendiri oleh penggunanya
+   tanpa server. Ada dua peran akun yang dibuat sendiri oleh penggunanya
    lewat formulir pendaftaran: 'guru' (mode Guru) dan 'siswa' (mode Siswa).
-   Satu akun siswa hanya boleh mendaftarkan SATU siswa. Akun Admin adalah
-   satu-satunya akun bawaan (lihat bagian ADMIN) — admin TIDAK membuatkan
-   akun untuk siapa pun.
+   PENDAFTARAN akun memerlukan EMPAT hal: email, nomor HP, kata sandi, dan
+   TOKEN pendaftaran sekali pakai dari Admin. Token dibedakan menurut peran:
+   token Siswa 5 karakter, token Guru 7 karakter; token terikat pada
+   perannya (token siswa hanya untuk akun siswa, token guru hanya untuk
+   akun guru) dan langsung hangus begitu satu akun berhasil dibuat.
+   MASUK memakai email + kata sandi. Kata sandi TIDAK pernah disimpan apa
+   adanya — yang disimpan hanya hash SHA-256 bergaram acak per akun
+   (WebCrypto crypto.subtle; ada hash cadangan bila WebCrypto tidak ada).
+   Nomor HP tetap menjadi data profil akun & identitas siswa, bukan lagi
+   kredensial masuk. Satu akun siswa hanya boleh mendaftarkan SATU siswa.
+   Akun Admin adalah satu-satunya akun bawaan (lihat bagian ADMIN) — admin
+   TIDAK membuatkan akun untuk siapa pun, admin hanya menerbitkan token.
+   AKUN LAMA (dibuat sebelum ada kata sandi, tanpa hash) tetap dipertahankan
+   datanya, tetapi pada masuk berikutnya pemiliknya wajib membuat kata
+   sandi lewat satu langkah verifikasi nomor HP (lihat bagian MIGRASI).
    PRIVASI: mode Siswa tidak pernah menampilkan daftar/pilihan siswa lain —
    yang tampil hanya formulir (bila belum masuk/terdaftar) atau QR + catatan
    milik siswa dari akun yang sedang masuk. Mode Guru hanya menampilkan
@@ -1446,15 +1485,134 @@ function newAccountId(){
 function normPhone(p){ return String(p || '').replace(/\D/g, ''); }
 function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim()); }
 
+/* ============================== KATA SANDI (HASH) ==============================
+   Kata sandi akun tidak pernah disimpan apa adanya. Yang disimpan pada
+   catatan akun hanyalah { passSalt, passHash }: garam acak 16 byte per akun
+   dan hash SHA-256(garam + kata sandi) lewat WebCrypto (crypto.subtle).
+   Karena hash bersifat asinkron, handler masuk/daftar/atur-ulang kini
+   berbentuk async (preventDefault tetap dipanggil pertama, secara sinkron).
+   Bila WebCrypto tidak tersedia (konteks tidak aman), dipakai hash cadangan
+   FNV-1a/cyrb yang diulang — ditandai awalan 'f' pada hash tersimpan.
+   CATATAN JUJUR: hash di sisi klien pada situs statis publik hanyalah
+   gerbang ringan — bukan pengaman sekelas server. */
+function hexDariBytes(bytes){
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function garamBaru(){
+  const a = new Uint8Array(16);
+  try{ crypto.getRandomValues(a); }catch(e){ for(let i = 0; i < 16; i++) a[i] = Math.floor(Math.random() * 256); }
+  return hexDariBytes(a);
+}
+function hashCadangan(teks){
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for(let r = 0; r < 60; r++){
+    const s = teks + '#' + r;
+    for(let i = 0; i < s.length; i++){
+      const ch = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  }
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0') +
+         (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+}
+async function buatKredensial(sandi){
+  const garam = garamBaru();
+  const bahan = garam + '::' + sandi;
+  let hash = null;
+  if(window.crypto && crypto.subtle && window.isSecureContext){
+    try{
+      const dig = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(bahan));
+      hash = hexDariBytes(new Uint8Array(dig));
+    }catch(e){ hash = null; }
+  }
+  if(!hash) hash = 'f' + hashCadangan(bahan);
+  return { passSalt: garam, passHash: hash };
+}
+async function cocokSandi(acc, sandi){
+  if(!acc || !acc.passHash || !acc.passSalt) return false;
+  const bahan = acc.passSalt + '::' + sandi;
+  if(acc.passHash.charAt(0) === 'f') return ('f' + hashCadangan(bahan)) === acc.passHash;
+  if(window.crypto && crypto.subtle){
+    try{
+      const dig = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(bahan));
+      return hexDariBytes(new Uint8Array(dig)) === acc.passHash;
+    }catch(e){ return false; }
+  }
+  return false;
+}
+function akunWarisan(acc){ return !!acc && !acc.passHash; }  // akun lama tanpa kata sandi
+
+/* ============================== TOKEN PENDAFTARAN ==============================
+   Token diterbitkan Admin dari Panel Admin, sekali pakai, terikat peran:
+   token Siswa = 5 karakter, token Guru = 7 karakter. Setiap token unik —
+   saat dibuat, kode diperiksa terhadap SEMUA token yang ada agar tidak
+   pernah ada dua token yang sama. Token hangus (usedBy terisi) begitu satu
+   akun berhasil dibuat dengannya; admin dapat mencabut token yang belum
+   dipakai. Pendaftaran tanpa token / token salah / token peran lain /
+   token terpakai / token dicabut ditolak dengan pesan yang jelas. */
+const PANJANG_TOKEN = { siswa: 5, guru: 7 };
+function normToken(s){ return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function labelToken(peran){ return peran === 'guru' ? 'Token Guru (7 karakter)' : 'Token Siswa (5 karakter)'; }
+function buatKodeToken(peran){
+  const len = PANJANG_TOKEN[peran] || 5;
+  let code; let tries = 0;
+  do { code = randCode(len); tries++; }
+  while (db.tokens.some(t => t.code === code) && tries < 200);
+  return code;
+}
+function cariToken(kode){
+  const n = normToken(kode);
+  if(!n) return null;
+  return db.tokens.find(t => t.code === n) || null;
+}
+/* Mengembalikan pesan penolakan (Bahasa Indonesia) bila token tidak dapat
+   dipakai untuk peran ini, atau null bila token sah. */
+function galatToken(kode, peran){
+  if(!normToken(kode)){
+    return 'Token pendaftaran wajib diisi. Minta ' + labelToken(peran) + ' kepada Admin aplikasi — tanpa token, pendaftaran tidak dapat dilakukan.';
+  }
+  const t = cariToken(kode);
+  if(!t){
+    return 'Token pendaftaran tidak valid. Periksa kembali kode token dari Admin, atau minta token baru.';
+  }
+  if(t.role !== peran){
+    return 'Token ini adalah ' + labelToken(t.role) + ' — tidak dapat dipakai untuk mendaftar akun ' +
+      (peran === 'guru' ? 'Guru' : 'Siswa') + '. Minta ' + labelToken(peran) + ' kepada Admin.';
+  }
+  if(t.revoked){
+    return 'Token ini sudah dicabut oleh Admin dan tidak dapat dipakai. Minta token baru kepada Admin.';
+  }
+  if(t.usedBy){
+    return 'Token ini sudah dipakai untuk membuat akun lain. Satu token hanya berlaku untuk satu akun — minta token baru kepada Admin.';
+  }
+  return null;
+}
+function tampilToken(code){
+  if(!code || code.length < 4) return code || '';
+  const tengah = Math.ceil(code.length / 2);
+  return code.slice(0, tengah) + '-' + code.slice(tengah);
+}
+
+/* ============================== MIGRASI AKUN LAMA ==============================
+   Akun yang dibuat sebelum ada kata sandi (tanpa passHash) tidak dihapus:
+   saat pemiliknya masuk lagi, ia diarahkan ke satu formulir "Buat Kata
+   Sandi" — verifikasi nomor HP terdaftar satu kali, lalu buat kata sandi.
+   Setelah itu akun masuk seperti biasa dengan email + kata sandi. */
+let migrasiId = null;    // id akun lama yang sedang membuat kata sandi
+let migrasiMsg = null;   // {type, text} pesan pada formulir migrasi
+
 /* ============================== LUPA KATA SANDI ==============================
-   Aplikasi ini tidak memakai kata sandi terpisah dan tidak mengirim kode
-   OTP (tidak ada layanan email/SMS): data masuk adalah pasangan email +
-   nomor HP. Bila pengguna lupa pasangan itu, HANYA Admin yang dapat
-   mengatur ulang data masuknya dari Panel Admin. Tautan "Lupa kata sandi?"
-   pada formulir masuk guru & siswa menampilkan penjelasan ini. */
-const TEKS_LUPA_SANDI = 'Di aplikasi ini Anda masuk dengan pasangan <b>email + nomor HP</b> — tidak ada kata sandi terpisah dan tidak ada pengiriman kode OTP. ' +
-  'Bila Anda lupa email atau nomor HP yang terdaftar, data masuk Anda <b>hanya dapat diatur ulang oleh Admin</b>. ' +
-  'Silakan hubungi Admin aplikasi untuk meminta pengaturan ulang data masuk. Setelah diatur ulang oleh Admin, masuklah dengan email dan nomor HP yang baru.';
+   Aplikasi ini tidak mengirim kode OTP (tidak ada layanan email/SMS):
+   bila pengguna lupa kata sandinya, HANYA Admin yang dapat mengatur ulang
+   kata sandi itu dari Panel Admin ("Atur Ulang Kata Sandi"). Tautan
+   "Lupa kata sandi?" pada formulir masuk guru & siswa menampilkan
+   penjelasan ini. */
+const TEKS_LUPA_SANDI = 'Kata sandi tidak dapat dipulihkan sendiri dan tidak ada pengiriman kode OTP di aplikasi ini. ' +
+  'Bila Anda lupa kata sandi, kata sandi Anda <b>hanya dapat diatur ulang oleh Admin</b>. ' +
+  'Silakan hubungi Admin aplikasi untuk meminta kata sandi baru. Setelah diatur ulang oleh Admin, masuklah dengan email dan kata sandi baru Anda.';
 function toggleLupa(k){
   const d = document.getElementById('lupa-' + k);
   if(d) d.classList.toggle('show');
@@ -1463,6 +1621,59 @@ function toggleLupa(k){
 function lupaSandiHtml(k){
   return '<p class="small" style="margin:12px 0 0"><a href="#" onclick="return toggleLupa(\'' + k + '\')">Lupa kata sandi?</a></p>' +
     '<div id="lupa-' + k + '" class="banner info" style="margin:10px 0 0">' + TEKS_LUPA_SANDI + '</div>';
+}
+
+/* Formulir satu kali untuk akun lama: verifikasi nomor HP + buat kata sandi. */
+function renderMigrasi(el, acc){
+  el.innerHTML =
+    '<div class="card"><h2>🔑 Buat Kata Sandi — Satu Kali Saja</h2>' +
+      '<p class="muted" style="margin-top:0">Akun <b>' + esc(acc.email) + '</b> dibuat sebelum aplikasi memakai kata sandi, jadi akun ini belum memiliki kata sandi. ' +
+      'Untuk melanjutkan, verifikasi <b>nomor HP yang terdaftar</b> untuk akun ini satu kali, lalu buat kata sandi Anda. Setelah langkah ini, Anda masuk dengan email + kata sandi seperti biasa. Data Anda (siswa, kelas, absensi) tidak berubah.</p>' +
+      (migrasiMsg ? '<div class="banner show ' + migrasiMsg.type + '">' + esc(migrasiMsg.text) + '</div>' : '') +
+      '<form onsubmit="return submitBuatSandi(event)">' +
+        '<div class="field"><label for="bs-hp">Nomor HP Terdaftar</label><input id="bs-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel"></div>' +
+        '<div class="field"><label for="bs-sandi">Kata Sandi Baru</label><input id="bs-sandi" type="password" class="inp" required autocomplete="new-password" placeholder="Minimal 6 karakter"></div>' +
+        '<div class="field"><label for="bs-sandi2">Ulangi Kata Sandi</label><input id="bs-sandi2" type="password" class="inp" required autocomplete="new-password" placeholder="Ketik ulang kata sandi"></div>' +
+        '<button class="btn block" type="submit">Buat Kata Sandi &amp; Masuk</button>' +
+      '</form>' +
+      '<p class="small" style="margin:12px 0 0"><a href="#" onclick="return batalMigrasi()">← Kembali ke formulir masuk</a></p></div>';
+}
+async function submitBuatSandi(ev){
+  ev.preventDefault();
+  const acc = db.accounts.find(a => a.id === migrasiId);
+  if(!acc){ migrasiId = null; migrasiMsg = null; render(); return false; }
+  const hp = document.getElementById('bs-hp').value;
+  const s1 = document.getElementById('bs-sandi').value;
+  const s2 = document.getElementById('bs-sandi2').value;
+  if(normPhone(acc.phone) !== normPhone(hp)){
+    migrasiMsg = { type:'err', text:'Nomor HP tidak cocok dengan nomor HP yang terdaftar untuk akun ini. Periksa kembali, atau hubungi Admin bila nomor Anda sudah berganti.' };
+    render(); return false;
+  }
+  if(s1.length < 6){
+    migrasiMsg = { type:'err', text:'Kata sandi terlalu pendek — minimal 6 karakter.' };
+    render(); return false;
+  }
+  if(s1 !== s2){
+    migrasiMsg = { type:'err', text:'Pengulangan kata sandi tidak sama. Ketik ulang kata sandi yang sama persis.' };
+    render(); return false;
+  }
+  const kred = await buatKredensial(s1);
+  acc.passSalt = kred.passSalt;
+  acc.passHash = kred.passHash;
+  saveDB();
+  migrasiId = null;
+  migrasiMsg = null;
+  setSession(acc);
+  if(acc.role === 'guru') guruMsg = { type:'ok', text:'✅ Kata sandi berhasil dibuat. Anda sudah masuk sebagai Guru.' };
+  else akunMsg = { type:'ok', text:'✅ Kata sandi berhasil dibuat dan Anda sudah masuk. Selamat datang kembali!' };
+  render();
+  return false;
+}
+function batalMigrasi(){
+  migrasiId = null;
+  migrasiMsg = null;
+  render();
+  return false;
 }
 
 /* ============================== ANTI-DUPLIKAT ==============================
@@ -1550,6 +1761,11 @@ function akunBarHtml(acc){
     '<button class="btn secondary small-btn" onclick="keluarAkun()">Keluar / Ganti Akun</button></div>';
 }
 function renderGerbangAkun(el){
+  if(migrasiId){
+    const ma = db.accounts.find(a => a.id === migrasiId);
+    if(ma && ma.role === 'siswa'){ renderMigrasi(el, ma); return; }
+    if(!ma) migrasiId = null;
+  }
   const rk = regAkunKeep || { email:'', phone:'' };
   const accLain = currentAccount();
   const catatanPeran = (accLain && accLain.role !== 'siswa')
@@ -1558,26 +1774,30 @@ function renderGerbangAkun(el){
   el.innerHTML =
     catatanPeran +
     '<div class="card"><h2>🔐 Masuk — Portal Siswa</h2>' +
-      '<p class="muted" style="margin-top:0">Portal siswa memerlukan akun. Masuk dengan email dan nomor HP yang Anda daftarkan di perangkat ini.</p>' +
+      '<p class="muted" style="margin-top:0">Portal siswa memerlukan akun. Masuk dengan email dan kata sandi yang Anda daftarkan di perangkat ini.</p>' +
       akunBannerHtml() +
       '<form onsubmit="return submitMasuk(event)">' +
         '<div class="field"><label for="m-email">Email</label><input id="m-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="username"></div>' +
-        '<div class="field"><label for="m-hp">Nomor HP</label><input id="m-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel"></div>' +
+        '<div class="field"><label for="m-sandi">Kata Sandi</label><input id="m-sandi" type="password" class="inp" required placeholder="Kata sandi akun Anda" autocomplete="current-password"></div>' +
         '<button class="btn block" type="submit">Masuk</button>' +
       '</form>' + lupaSandiHtml('siswa') + '</div>' +
     '<div class="card"><h3>Belum punya akun? Daftar Akun</h3>' +
-      '<p class="muted" style="margin-top:0">Buat akun dengan email dan nomor HP. Akun tersimpan hanya di perangkat ini (tanpa server) dan dipakai untuk membuka QR pribadi siswa. Satu akun hanya dapat mendaftarkan satu siswa.</p>' +
+      '<p class="muted" style="margin-top:0">Buat akun dengan email, nomor HP, dan kata sandi. Pendaftaran juga memerlukan <b>Token Siswa (5 karakter)</b> dari Admin — satu token hanya berlaku untuk satu akun. Akun tersimpan hanya di perangkat ini (tanpa server) dan dipakai untuk membuka QR pribadi siswa. Satu akun hanya dapat mendaftarkan satu siswa.</p>' +
       '<form onsubmit="return submitDaftarAkun(event)">' +
         '<div class="field"><label for="r-email">Email</label><input id="r-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="email" value="' + esc(rk.email) + '"></div>' +
         '<div class="field"><label for="r-hp">Nomor HP</label><input id="r-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel" value="' + esc(rk.phone) + '"></div>' +
+        '<div class="field"><label for="r-sandi">Kata Sandi</label><input id="r-sandi" type="password" class="inp" required autocomplete="new-password" placeholder="Minimal 6 karakter"></div>' +
+        '<div class="field"><label for="r-token">Token Pendaftaran Siswa (5 karakter)</label><input id="r-token" type="text" class="inp" required placeholder="Contoh: K7QX2" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"></div>' +
         '<button class="btn block" type="submit">Daftar Akun</button>' +
       '</form>' +
-      '<p class="small muted" style="margin-bottom:0">Catatan: akun ini hanya ada di perangkat ini. Bila berganti HP, buat akun baru di HP tersebut.</p></div>';
+      '<p class="small muted" style="margin-bottom:0">Catatan: akun ini hanya ada di perangkat ini. Bila berganti HP, buat akun baru di HP tersebut dengan token baru dari Admin.</p></div>';
 }
-function submitDaftarAkun(ev){
+async function submitDaftarAkun(ev){
   ev.preventDefault();
   const email = document.getElementById('r-email').value.trim();
   const phone = document.getElementById('r-hp').value.trim();
+  const sandi = document.getElementById('r-sandi').value;
+  const tokenMentah = document.getElementById('r-token').value;
   regAkunKeep = { email: email, phone: phone };
   if(!validEmail(email)){
     akunMsg = { type:'err', text:'Format email belum benar. Periksa kembali email Anda.' };
@@ -1587,12 +1807,26 @@ function submitDaftarAkun(ev){
     akunMsg = { type:'err', text:'Nomor HP terlalu pendek. Isi nomor HP yang benar.' };
     render(); return false;
   }
-  if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
-    akunMsg = { type:'err', text:'Email ini sudah terdaftar di perangkat ini. Silakan masuk dengan email dan nomor HP Anda.' };
+  if(sandi.length < 6){
+    akunMsg = { type:'err', text:'Kata sandi terlalu pendek — minimal 6 karakter.' };
     render(); return false;
   }
-  const acc = { id: newAccountId(), email: email, phone: phone, role: 'siswa', createdAt: new Date().toISOString() };
+  const gToken = galatToken(tokenMentah, 'siswa');
+  if(gToken){
+    akunMsg = { type:'err', text:gToken };
+    render(); return false;
+  }
+  if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
+    akunMsg = { type:'err', text:'Email ini sudah terdaftar di perangkat ini. Silakan masuk dengan email dan kata sandi Anda.' };
+    render(); return false;
+  }
+  const token = cariToken(tokenMentah);
+  const kred = await buatKredensial(sandi);
+  const acc = { id: newAccountId(), email: email, phone: phone, role: 'siswa', passSalt: kred.passSalt, passHash: kred.passHash, createdAt: new Date().toISOString() };
   db.accounts.push(acc);
+  // Token hangus begitu akun berhasil dibuat — satu token, satu akun.
+  token.usedBy = acc.id;
+  token.usedAt = new Date().toISOString();
   regAkunKeep = null;
   saveDB();
   setSession(acc);
@@ -1600,17 +1834,29 @@ function submitDaftarAkun(ev){
   render();
   return false;
 }
-function submitMasuk(ev){
+async function submitMasuk(ev){
   ev.preventDefault();
   const email = document.getElementById('m-email').value.trim().toLowerCase();
-  const phone = normPhone(document.getElementById('m-hp').value);
-  const cocok = db.accounts.find(a => a.email.toLowerCase() === email && normPhone(a.phone) === phone);
+  const sandi = document.getElementById('m-sandi').value;
+  const cocok = db.accounts.find(a => a.email.toLowerCase() === email);
   if(!cocok){
-    akunMsg = { type:'err', text:'Akun tidak ditemukan di perangkat ini. Periksa email dan nomor HP Anda, atau daftar akun baru di bawah.' };
+    akunMsg = { type:'err', text:'Akun tidak ditemukan di perangkat ini. Periksa email Anda, atau daftar akun baru di bawah (memerlukan Token Siswa dari Admin).' };
     render(); return false;
   }
   if(cocok.role !== 'siswa'){
     akunMsg = { type:'err', text:'Email ini terdaftar sebagai akun Guru. Portal Siswa memerlukan akun Siswa — silakan daftar akun siswa atau masuk lewat mode Guru.' };
+    render(); return false;
+  }
+  if(akunWarisan(cocok)){
+    // Akun lama tanpa kata sandi: arahkan ke langkah buat kata sandi satu kali.
+    migrasiId = cocok.id;
+    migrasiMsg = null;
+    akunMsg = null;
+    render(); return false;
+  }
+  const okSandi = await cocokSandi(cocok, sandi);
+  if(!okSandi){
+    akunMsg = { type:'err', text:'Kata sandi salah untuk akun ini. Coba lagi, atau baca tautan "Lupa kata sandi?" di bawah.' };
     render(); return false;
   }
   setSession(cocok);
@@ -1622,18 +1868,32 @@ function keluarAkun(){
   setSession(null);
   akunMsg = null;
   guruMsg = null;
+  migrasiId = null;
+  migrasiMsg = null;
   editMine = false;
   ubahKeep = null;
   daftarKeep = null;
   dokDaftar = null;
   dokUbah = null;
+  // Kembali ke halaman awal: pemilih mode tampil lagi. Bila sesi Admin
+  // masih aktif, layar kembali ke portal Admin.
+  stopCamera();
+  mode = adminLogin ? 'admin' : 'guru';
+  try{ localStorage.setItem(MODE_KEY, mode); }catch(e){}
   render();
 }
 
 /* ============================== GERBANG AKUN GURU ==============================
-   Mode Guru juga memerlukan akun (email + nomor HP, lokal di perangkat ini).
-   Guru hanya melihat & mengelola kelas, siswa, absensi, dan rekap miliknya. */
+   Mode Guru juga memerlukan akun (lokal di perangkat ini): pendaftaran
+   memakai email + nomor HP + kata sandi + Token Guru (7 karakter) dari
+   Admin; masuk memakai email + kata sandi. Guru hanya melihat & mengelola
+   kelas, siswa, absensi, dan rekap miliknya. */
 function renderGerbangGuru(el){
+  if(migrasiId){
+    const ma = db.accounts.find(a => a.id === migrasiId);
+    if(ma && ma.role === 'guru'){ renderMigrasi(el, ma); return; }
+    if(!ma) migrasiId = null;
+  }
   const rk = regGuruKeep || { email:'', phone:'' };
   const accLain = currentAccount();
   const catatanPeran = (accLain && accLain.role !== 'guru')
@@ -1642,26 +1902,30 @@ function renderGerbangGuru(el){
   el.innerHTML =
     catatanPeran +
     '<div class="card"><h2>🔐 Masuk — Mode Guru</h2>' +
-      '<p class="muted" style="margin-top:0">Mode guru memerlukan akun. Masuk dengan email dan nomor HP yang Anda daftarkan di perangkat ini. Setiap guru hanya melihat kelas, siswa, absensi, dan rekap miliknya sendiri.</p>' +
+      '<p class="muted" style="margin-top:0">Mode guru memerlukan akun. Masuk dengan email dan kata sandi yang Anda daftarkan di perangkat ini. Setiap guru hanya melihat kelas, siswa, absensi, dan rekap miliknya sendiri.</p>' +
       (guruMsg ? '<div class="banner show ' + guruMsg.type + '">' + esc(guruMsg.text) + '</div>' : '') +
       '<form onsubmit="return submitMasukGuru(event)">' +
         '<div class="field"><label for="gm-email">Email</label><input id="gm-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="username"></div>' +
-        '<div class="field"><label for="gm-hp">Nomor HP</label><input id="gm-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel"></div>' +
+        '<div class="field"><label for="gm-sandi">Kata Sandi</label><input id="gm-sandi" type="password" class="inp" required placeholder="Kata sandi akun Anda" autocomplete="current-password"></div>' +
         '<button class="btn block" type="submit">Masuk sebagai Guru</button>' +
       '</form>' + lupaSandiHtml('guru') + '</div>' +
     '<div class="card"><h3>Belum punya akun guru? Daftar Akun Guru</h3>' +
-      '<p class="muted" style="margin-top:0">Buat akun guru dengan email dan nomor HP. Akun tersimpan hanya di perangkat ini (tanpa server). Kelas dan siswa yang Anda buat menjadi milik akun Anda dan tidak terlihat oleh guru lain di perangkat yang sama.</p>' +
+      '<p class="muted" style="margin-top:0">Buat akun guru dengan email, nomor HP, dan kata sandi. Pendaftaran juga memerlukan <b>Token Guru (7 karakter)</b> dari Admin — satu token hanya berlaku untuk satu akun. Akun tersimpan hanya di perangkat ini (tanpa server). Kelas dan siswa yang Anda buat menjadi milik akun Anda dan tidak terlihat oleh guru lain di perangkat yang sama.</p>' +
       '<form onsubmit="return submitDaftarAkunGuru(event)">' +
         '<div class="field"><label for="gr-email">Email</label><input id="gr-email" type="email" class="inp" required placeholder="nama@email.com" autocomplete="email" value="' + esc(rk.email) + '"></div>' +
         '<div class="field"><label for="gr-hp">Nomor HP</label><input id="gr-hp" type="tel" class="inp" required placeholder="08xxxxxxxxxx" autocomplete="tel" value="' + esc(rk.phone) + '"></div>' +
+        '<div class="field"><label for="gr-sandi">Kata Sandi</label><input id="gr-sandi" type="password" class="inp" required autocomplete="new-password" placeholder="Minimal 6 karakter"></div>' +
+        '<div class="field"><label for="gr-token">Token Pendaftaran Guru (7 karakter)</label><input id="gr-token" type="text" class="inp" required placeholder="Contoh: K7QX2M9" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"></div>' +
         '<button class="btn block" type="submit">Daftar Akun Guru</button>' +
       '</form>' +
-      '<p class="small muted" style="margin-bottom:0">Catatan: akun ini hanya ada di perangkat ini. Bila berganti HP, buat akun baru di HP tersebut lalu impor data Anda lewat menu Ekspor &amp; Impor Data.</p></div>';
+      '<p class="small muted" style="margin-bottom:0">Catatan: akun ini hanya ada di perangkat ini. Bila berganti HP, buat akun baru di HP tersebut dengan token baru dari Admin, lalu impor data Anda lewat menu Ekspor &amp; Impor Data.</p></div>';
 }
-function submitDaftarAkunGuru(ev){
+async function submitDaftarAkunGuru(ev){
   ev.preventDefault();
   const email = document.getElementById('gr-email').value.trim();
   const phone = document.getElementById('gr-hp').value.trim();
+  const sandi = document.getElementById('gr-sandi').value;
+  const tokenMentah = document.getElementById('gr-token').value;
   regGuruKeep = { email: email, phone: phone };
   if(!validEmail(email)){
     guruMsg = { type:'err', text:'Format email belum benar. Periksa kembali email Anda.' };
@@ -1671,12 +1935,26 @@ function submitDaftarAkunGuru(ev){
     guruMsg = { type:'err', text:'Nomor HP terlalu pendek. Isi nomor HP yang benar.' };
     render(); return false;
   }
-  if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
-    guruMsg = { type:'err', text:'Email ini sudah terdaftar di perangkat ini. Silakan masuk dengan email dan nomor HP Anda.' };
+  if(sandi.length < 6){
+    guruMsg = { type:'err', text:'Kata sandi terlalu pendek — minimal 6 karakter.' };
     render(); return false;
   }
-  const acc = { id: newAccountId(), email: email, phone: phone, role: 'guru', createdAt: new Date().toISOString() };
+  const gToken = galatToken(tokenMentah, 'guru');
+  if(gToken){
+    guruMsg = { type:'err', text:gToken };
+    render(); return false;
+  }
+  if(db.accounts.some(a => a.email.toLowerCase() === email.toLowerCase())){
+    guruMsg = { type:'err', text:'Email ini sudah terdaftar di perangkat ini. Silakan masuk dengan email dan kata sandi Anda.' };
+    render(); return false;
+  }
+  const token = cariToken(tokenMentah);
+  const kred = await buatKredensial(sandi);
+  const acc = { id: newAccountId(), email: email, phone: phone, role: 'guru', passSalt: kred.passSalt, passHash: kred.passHash, createdAt: new Date().toISOString() };
   db.accounts.push(acc);
+  // Token hangus begitu akun berhasil dibuat — satu token, satu akun.
+  token.usedBy = acc.id;
+  token.usedAt = new Date().toISOString();
   regGuruKeep = null;
   saveDB();
   setSession(acc);
@@ -1685,17 +1963,29 @@ function submitDaftarAkunGuru(ev){
   render();
   return false;
 }
-function submitMasukGuru(ev){
+async function submitMasukGuru(ev){
   ev.preventDefault();
   const email = document.getElementById('gm-email').value.trim().toLowerCase();
-  const phone = normPhone(document.getElementById('gm-hp').value);
-  const cocok = db.accounts.find(a => a.email.toLowerCase() === email && normPhone(a.phone) === phone);
+  const sandi = document.getElementById('gm-sandi').value;
+  const cocok = db.accounts.find(a => a.email.toLowerCase() === email);
   if(!cocok){
-    guruMsg = { type:'err', text:'Akun tidak ditemukan di perangkat ini. Periksa email dan nomor HP Anda, atau daftar akun guru baru di bawah.' };
+    guruMsg = { type:'err', text:'Akun tidak ditemukan di perangkat ini. Periksa email Anda, atau daftar akun guru baru di bawah (memerlukan Token Guru dari Admin).' };
     render(); return false;
   }
   if(cocok.role !== 'guru'){
     guruMsg = { type:'err', text:'Email ini terdaftar sebagai akun Siswa. Mode Guru memerlukan akun Guru — silakan daftar akun guru atau masuk lewat mode Siswa.' };
+    render(); return false;
+  }
+  if(akunWarisan(cocok)){
+    // Akun lama tanpa kata sandi: arahkan ke langkah buat kata sandi satu kali.
+    migrasiId = cocok.id;
+    migrasiMsg = null;
+    guruMsg = null;
+    render(); return false;
+  }
+  const okSandi = await cocokSandi(cocok, sandi);
+  if(!okSandi){
+    guruMsg = { type:'err', text:'Kata sandi salah untuk akun ini. Coba lagi, atau baca tautan "Lupa kata sandi?" di bawah.' };
     render(); return false;
   }
   setSession(cocok);
@@ -2093,13 +2383,12 @@ const ADMIN_KEY = 'absensiSiswa.admin';
 let adminLogin = false;
 try{ adminLogin = localStorage.getItem(ADMIN_KEY) === '1'; }catch(e){}
 let adminMsg = null;
-let adminView = 'ringkasan';   // ringkasan | guru | siswa | kelas | rekap
+let adminView = 'ringkasan';   // ringkasan | guru | token | siswa | kelas | rekap
 let adminGuruId = null;
 let adminEditId = null;
 let adminUbahKeep = null;
 let adminRekapMonth = todayStr().slice(0, 7);
-let adminResetId = null;     // akun yang sedang diatur ulang data masuknya oleh admin
-let adminResetKeep = null;   // nilai formulir atur ulang (dipertahankan bila ditolak)
+let adminResetId = null;     // akun yang sedang diatur ulang kata sandinya oleh admin
 
 function renderAdminMode(){
   const el = document.getElementById('admin-view');
@@ -2142,77 +2431,70 @@ function keluarAdmin(){
   adminEditId = null;
   adminUbahKeep = null;
   adminResetId = null;
-  adminResetKeep = null;
   dokAdmin = null;
+  // Kembali ke halaman awal: pemilih mode tampil lagi. Bila masih ada sesi
+  // akun (guru/siswa) yang aktif, layar kembali ke portal akun itu.
+  const sisa = currentAccount();
+  mode = sisa ? sisa.role : 'guru';
+  try{ localStorage.setItem(MODE_KEY, mode); }catch(e){}
   render();
 }
-/* ================= ATUR ULANG DATA MASUK OLEH ADMIN =================
-   Satu-satunya jalan memulihkan akun yang pemiliknya lupa data masuk:
-   admin mengganti email dan/atau nomor HP akun itu dari Panel Admin.
-   (Akun guru/siswa tidak memiliki kata sandi terpisah — pasangan email +
-   nomor HP itulah kredensial masuknya, jadi inilah bentuk "atur ulang
-   kata sandi" di aplikasi ini. Tidak ada OTP dan tidak ada pengiriman
-   email/SMS.) Email baru tidak boleh sama dengan email akun lain —
-   pemeriksaan duplikat akun yang sama seperti saat pendaftaran. */
+/* ================= ATUR ULANG KATA SANDI OLEH ADMIN =================
+   Satu-satunya jalan memulihkan akun yang pemiliknya lupa kata sandi:
+   admin menetapkan kata sandi BARU untuk akun itu dari Panel Admin.
+   Kata sandi lama langsung berhenti berlaku. Kata sandi tidak pernah
+   ditampilkan di mana pun — yang tersimpan hanya hash bergaramnya, jadi
+   admin pun tidak dapat melihat kata sandi lama siapa pun. Tidak ada OTP
+   dan tidak ada pengiriman email/SMS. Aksi ini juga menyelesaikan akun
+   lama yang belum memiliki kata sandi (admin menetapkan kata sandi
+   pertamanya). */
 function adminMulaiReset(id){
   adminResetId = id;
-  adminResetKeep = null;
   adminMsg = null;
   render();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function adminBatalReset(){
   adminResetId = null;
-  adminResetKeep = null;
   adminMsg = null;
   render();
 }
 function adminResetHtml(){
   const acc = db.accounts.find(a => a.id === adminResetId);
   if(!acc) return '';
-  const kv = adminResetKeep || { email: acc.email, phone: acc.phone };
-  return '<div class="card"><h3>🔑 Atur Ulang Data Masuk — Akun ' + (acc.role === 'guru' ? 'Guru' : 'Siswa') + '</h3>' +
-    '<p class="muted" style="margin-top:0">Akun ini sekarang masuk dengan email <b>' + esc(acc.email) + '</b> dan nomor HP <b>' + esc(acc.phone) + '</b>. ' +
-    'Karena data masuk adalah pasangan email + nomor HP, mengatur ulang data masuk berarti mengganti email dan/atau nomor HP akun ini. ' +
-    'Setelah disimpan, pemilik akun masuk dengan data yang baru — data lama tidak berlaku lagi.</p>' +
+  return '<div class="card"><h3>🔑 Atur Ulang Kata Sandi — Akun ' + (acc.role === 'guru' ? 'Guru' : 'Siswa') + '</h3>' +
+    '<p class="muted" style="margin-top:0">Tetapkan kata sandi baru untuk akun <b>' + esc(acc.email) + '</b> (HP ' + esc(acc.phone) + '). ' +
+    (akunWarisan(acc)
+      ? 'Akun ini adalah akun lama yang <b>belum memiliki kata sandi</b> — kata sandi yang Anda tetapkan di sini menjadi kata sandi pertamanya. '
+      : 'Kata sandi lama akun ini langsung berhenti berlaku. ') +
+    'Sampaikan kata sandi baru ini kepada pemilik akun secara langsung; setelah masuk, hanya pemilik akun dan Anda sebagai admin yang mengetahuinya dari penyampaian itu — aplikasi hanya menyimpan hash-nya.</p>' +
     '<form onsubmit="return submitAdminResetAkun(event)">' +
-      '<div class="field"><label for="rst-email">Email Baru</label><input id="rst-email" type="email" class="inp" required autocomplete="off" value="' + esc(kv.email) + '"></div>' +
-      '<div class="field"><label for="rst-hp">Nomor HP Baru</label><input id="rst-hp" type="tel" class="inp" required autocomplete="off" value="' + esc(kv.phone) + '"></div>' +
-      '<div class="row" style="margin-top:14px"><button class="btn" type="submit">💾 Simpan Data Masuk Baru</button>' +
+      '<div class="field"><label for="rst-sandi">Kata Sandi Baru</label><input id="rst-sandi" type="password" class="inp" required autocomplete="new-password" placeholder="Minimal 6 karakter"></div>' +
+      '<div class="field"><label for="rst-sandi2">Ulangi Kata Sandi Baru</label><input id="rst-sandi2" type="password" class="inp" required autocomplete="new-password" placeholder="Ketik ulang kata sandi baru"></div>' +
+      '<div class="row" style="margin-top:14px"><button class="btn" type="submit">💾 Simpan Kata Sandi Baru</button>' +
       '<button class="btn secondary" type="button" onclick="adminBatalReset()">Batal</button></div>' +
     '</form></div>';
 }
-function submitAdminResetAkun(ev){
+async function submitAdminResetAkun(ev){
   ev.preventDefault();
   const acc = db.accounts.find(a => a.id === adminResetId);
   if(!acc) return false;
-  const email = document.getElementById('rst-email').value.trim();
-  const phone = document.getElementById('rst-hp').value.trim();
-  adminResetKeep = { email: email, phone: phone };
-  if(!validEmail(email)){
-    adminMsg = { type:'err', text:'❌ Format email belum benar. Periksa kembali email baru untuk akun ini.' };
+  const s1 = document.getElementById('rst-sandi').value;
+  const s2 = document.getElementById('rst-sandi2').value;
+  if(s1.length < 6){
+    adminMsg = { type:'err', text:'❌ Kata sandi terlalu pendek — minimal 6 karakter.' };
     render(); return false;
   }
-  if(normPhone(phone).length < 9){
-    adminMsg = { type:'err', text:'❌ Nomor HP terlalu pendek. Isi nomor HP yang benar.' };
+  if(s1 !== s2){
+    adminMsg = { type:'err', text:'❌ Pengulangan kata sandi tidak sama. Ketik ulang kata sandi baru yang sama persis.' };
     render(); return false;
   }
-  if(db.accounts.some(a => a.id !== acc.id && a.email.toLowerCase() === email.toLowerCase())){
-    adminMsg = { type:'err', text:'❌ Email ini sudah dipakai akun lain di perangkat ini. Gunakan email lain agar akun tidak tertukar.' };
-    render(); return false;
-  }
-  if(acc.email.toLowerCase() === email.toLowerCase() && normPhone(acc.phone) === normPhone(phone)){
-    adminResetId = null;
-    adminResetKeep = null;
-    adminMsg = { type:'info', text:'Tidak ada perubahan — email dan nomor HP akun ini masih sama seperti sebelumnya.' };
-    render(); return false;
-  }
-  acc.email = email;
-  acc.phone = phone;
+  const kred = await buatKredensial(s1);
+  acc.passSalt = kred.passSalt;
+  acc.passHash = kred.passHash;
   saveDB();
   adminResetId = null;
-  adminResetKeep = null;
-  adminMsg = { type:'ok', text:'✅ Data masuk akun ' + email + ' berhasil diatur ulang. Pemilik akun sekarang masuk dengan email dan nomor HP yang baru.' };
+  adminMsg = { type:'ok', text:'✅ Kata sandi akun ' + acc.email + ' berhasil diatur ulang. Pemilik akun sekarang masuk dengan kata sandi baru.' };
   render();
   return false;
 }
@@ -2224,6 +2506,65 @@ function adminNav(v){
 }
 function adminBukaGuru(id){ adminGuruId = id; adminView = 'guru'; render(); }
 
+/* ================= TOKEN PENDAFTARAN (ADMIN) =================
+   Admin menerbitkan token sekali pakai, terpisah per peran: Token Siswa
+   (5 karakter) hanya untuk akun Siswa, Token Guru (7 karakter) hanya
+   untuk akun Guru. Setiap token yang dibuat diperiksa keunikannya
+   terhadap semua token yang ada. Admin melihat status tiap token
+   (belum dipakai / sudah dipakai oleh akun mana / dicabut) dan dapat
+   mencabut token yang belum dipakai. */
+function adminBuatToken(peran, jumlah){
+  for(let i = 0; i < jumlah; i++){
+    db.tokens.push({ code: buatKodeToken(peran), role: peran, createdAt: new Date().toISOString(), usedBy: null, usedAt: null, revoked: false });
+  }
+  saveDB();
+  adminView = 'token';
+  adminMsg = { type:'ok', text:'✅ ' + jumlah + ' ' + labelToken(peran) + ' baru dibuat. Berikan satu token kepada satu orang yang akan mendaftar — token langsung hangus setelah dipakai.' };
+  render();
+}
+function adminCabutToken(code){
+  const t = db.tokens.find(x => x.code === code);
+  if(!t || t.usedBy || t.revoked) return;
+  if(!confirm('Cabut token ' + tampilToken(code) + '? Token ini tidak akan bisa dipakai untuk mendaftar.')) return;
+  t.revoked = true;
+  saveDB();
+  adminMsg = { type:'ok', text:'✅ Token ' + tampilToken(code) + ' dicabut.' };
+  render();
+}
+function barisTokenAdmin(t){
+  const pemakai = t.usedBy ? db.accounts.find(a => a.id === t.usedBy) : null;
+  let status, aksi = '';
+  if(t.revoked) status = '<span style="color:#dc2626;font-weight:700">Dicabut</span>';
+  else if(t.usedBy) status = 'Sudah dipakai' + (pemakai ? ' — ' + esc(pemakai.email) + ' (' + (pemakai.role === 'guru' ? 'Guru' : 'Siswa') + ')' : '');
+  else {
+    status = '<span style="color:#16a34a;font-weight:700">Belum dipakai</span>';
+    aksi = '<button class="btn danger small-btn" onclick="adminCabutToken(\'' + t.code + '\')">Cabut</button>';
+  }
+  return '<div class="student-row"><div class="student-info"><span class="nm" style="font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:1px">' + esc(tampilToken(t.code)) + '</span>' +
+    '<div class="sub">' + status + ' • Dibuat ' + esc(String(t.createdAt || '').slice(0, 10)) + '</div></div>' +
+    (aksi ? '<div class="icon-btns">' + aksi + '</div>' : '') + '</div>';
+}
+function adminTokenSectionHtml(peran){
+  const list = db.tokens.filter(t => t.role === peran).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const belum = list.filter(t => !t.usedBy && !t.revoked).length;
+  return '<div class="card"><h3>🎟 ' + labelToken(peran) + '</h3>' +
+    '<p class="muted" style="margin-top:0">' + (peran === 'guru'
+      ? 'Token Guru hanya dapat dipakai untuk mendaftar <b>akun Guru</b>. Berikan kepada guru yang akan mendaftar.'
+      : 'Token Siswa hanya dapat dipakai untuk mendaftar <b>akun Siswa</b>. Berikan kepada siswa yang akan mendaftar akun.') +
+    ' Satu token untuk satu akun; token hangus begitu dipakai. Saat ini ada <b>' + belum + '</b> token yang belum dipakai.</p>' +
+    '<div class="row"><button class="btn" type="button" onclick="adminBuatToken(\'' + peran + '\', 1)">+ Buat 1 Token</button>' +
+    '<button class="btn secondary" type="button" onclick="adminBuatToken(\'' + peran + '\', 5)">+ Buat 5 Token</button></div>' +
+    '<div style="margin-top:12px">' +
+    (list.length ? list.map(barisTokenAdmin).join('') : '<p class="muted">Belum ada token untuk peran ini. Buat token pertama dengan tombol di atas.</p>') +
+    '</div></div>';
+}
+function adminTokenHtml(){
+  return '<div class="card"><h2>Token Pendaftaran</h2>' +
+    '<p class="muted" style="margin-top:0">Pendaftaran akun Guru dan Siswa wajib memakai token sekali pakai dari Admin — ini mencegah pendaftaran akun ganda atau sembarangan. Token Siswa (5 karakter) dan Token Guru (7 karakter) dikelola terpisah dan tidak dapat saling menggantikan.</p></div>' +
+    adminTokenSectionHtml('siswa') +
+    adminTokenSectionHtml('guru');
+}
+
 function renderPanelAdmin(el){
   const guruAccs = db.accounts.filter(a => a.role === 'guru');
   const siswaAccs = db.accounts.filter(a => a.role === 'siswa');
@@ -2231,6 +2572,7 @@ function renderPanelAdmin(el){
     '<button class="' + (adminView === v ? 'btn' : 'btn secondary') + ' small-btn" onclick="adminNav(\'' + v + '\')">' + label + '</button>';
   let body = '';
   if(adminView === 'guru') body = adminGuruHtml(guruAccs);
+  else if(adminView === 'token') body = adminTokenHtml();
   else if(adminView === 'siswa') body = adminSiswaHtml();
   else if(adminView === 'kelas') body = adminKelasHtml();
   else if(adminView === 'rekap') body = adminRekapHtml();
@@ -2240,8 +2582,9 @@ function renderPanelAdmin(el){
       '<span class="small">🛡 Masuk sebagai <b>Admin</b><span class="badge-admin">AKSES PENUH</span></span>' +
       '<button class="btn secondary small-btn" onclick="keluarAdmin()">Keluar Admin</button></div>' +
     '<div class="tabs">' + navBtn('ringkasan', '📋 Ringkasan') + navBtn('guru', '👩‍🏫 Akun Guru') +
+      navBtn('token', '🎟 Token Daftar') +
       navBtn('siswa', '👥 Semua Siswa') + navBtn('kelas', '🏫 Semua Kelas') + navBtn('rekap', '📊 Rekap Semua') + '</div>' +
-    (adminMsg && (adminView !== 'siswa' || adminResetId) ? '<div class="banner show ' + adminMsg.type + '">' + esc(adminMsg.text) + '</div>' : '') +
+    (adminMsg && (adminView !== 'siswa' || adminResetId || !adminEditId) ? '<div class="banner show ' + adminMsg.type + '">' + esc(adminMsg.text) + '</div>' : '') +
     (adminResetId ? adminResetHtml() : '') +
     body +
     (adminView === 'ringkasan' ? eksporImporCardHtml('admin') : '');
@@ -2265,7 +2608,7 @@ function adminRingkasanHtml(guruAccs, siswaAccs){
         return '<div class="student-row"><div class="student-info"><span class="nm">' + esc(a.email) + '</span>' +
           '<div class="sub">HP ' + esc(a.phone) + ' • ' + guruClasses(a).length + ' kelas • ' + guruStudents(a).length + ' siswa</div></div>' +
           '<div class="icon-btns"><button class="btn small-btn" onclick="adminBukaGuru(\'' + a.id + '\')">Buka Wilayah Guru</button>' +
-          '<button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + a.id + '\')">Atur Ulang Data Masuk</button></div></div>';
+          '<button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + a.id + '\')">Atur Ulang Kata Sandi</button></div></div>';
       }).join('') : '<p class="muted">Belum ada akun guru yang mendaftar di perangkat ini.</p>') + '</div>' +
     '<div class="card"><h3>🎓 Akun Siswa Terdaftar</h3>' +
       (siswaAccs.length ? siswaAccs.map(a => {
@@ -2275,8 +2618,10 @@ function adminRingkasanHtml(guruAccs, siswaAccs){
           '<div class="icon-btns">' +
           (st ? '<button class="btn small-btn" onclick="openQRModal(\'' + st.id + '\')">QR Siswa</button>' +
             '<button class="btn secondary small-btn" onclick="openDetailSiswa(\'' + st.id + '\')">Detail</button>' +
-            '<button class="btn secondary small-btn" onclick="adminMulaiUbah(\'' + st.id + '\')">Ubah</button>' : '') +
-            '<button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + a.id + '\')">Atur Ulang Data Masuk</button></div></div>';
+            '<button class="btn secondary small-btn" onclick="adminMulaiUbah(\'' + st.id + '\')">Ubah</button>' +
+            '<button class="btn danger small-btn" onclick="adminHapusSiswa(\'' + st.id + '\')">Hapus Siswa</button>' : '') +
+            '<button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + a.id + '\')">Atur Ulang Kata Sandi</button>' +
+            '<button class="btn danger small-btn" onclick="adminHapusAkunSiswa(\'' + a.id + '\')">Hapus Akun</button></div></div>';
       }).join('') : '<p class="muted">Belum ada akun siswa yang mendaftar di perangkat ini.</p>') + '</div>';
 }
 function barisSiswaAdmin(s){
@@ -2304,7 +2649,7 @@ function adminGuruHtml(guruAccs){
     guruAccs.map(a => '<option value="' + a.id + '"' + (a.id === acc.id ? ' selected' : '') + '>' + esc(a.email) + ' — ' + esc(a.phone) + '</option>').join('') +
     '</select></div>' +
     '<p class="muted" style="margin:0">Guru ini memiliki <b>' + kelas.length + ' kelas</b> dan <b>' + murid.length + ' siswa</b>. Hari ini: ' + tercatat + ' tercatat, ' + hadir + ' hadir. Sebagai admin Anda dapat melihat dan mengubah data mereka dari sini.</p>' +
-    '<div style="margin-top:12px"><button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + acc.id + '\')">🔑 Atur Ulang Data Masuk Guru Ini</button></div></div>';
+    '<div style="margin-top:12px"><button class="btn secondary small-btn" onclick="adminMulaiReset(\'' + acc.id + '\')">🔑 Atur Ulang Kata Sandi Guru Ini</button></div></div>';
   if(!kelas.length) h += '<div class="card"><p class="muted">Guru ini belum membuat kelas.</p></div>';
   kelas.forEach(c => {
     const list = murid.filter(s => s.classId === c.id).slice().sort((a, b) => a.name.localeCompare(b.name, 'id'));
@@ -2387,8 +2732,33 @@ function adminHapusSiswa(sid){
   if(!confirm('Hapus siswa "' + st.name + '" beserta catatan kehadirannya? (Tindakan admin)')) return;
   db.students = db.students.filter(s => s.id !== sid);
   db.attendance = db.attendance.filter(a => a.studentId !== sid);
-  if(adminEditId === sid) adminEditId = null;
+  if(adminEditId === sid){ adminEditId = null; adminUbahKeep = null; dokAdmin = null; }
   saveDB();
+  adminMsg = { type:'ok', text:'✅ Siswa "' + st.name + '" beserta catatan kehadirannya berhasil dihapus.' };
+  render();
+}
+/* Hapus AKUN siswa dari Panel Admin — termasuk akun yang pendaftarannya
+   gagal/belum lengkap (belum memiliki data siswa). Bila akun itu memiliki
+   data siswa, data siswa dan seluruh catatan kehadirannya ikut terhapus.
+   Selalu meminta konfirmasi terlebih dahulu. */
+function adminHapusAkunSiswa(id){
+  const acc = db.accounts.find(a => a.id === id);
+  if(!acc || acc.role !== 'siswa') return;
+  const st = studentOfAccount(id);
+  const pesan = st
+    ? 'Hapus AKUN siswa ' + acc.email + ' beserta data siswa "' + st.name + '" dan seluruh catatan kehadirannya? Tindakan ini tidak dapat dibatalkan.'
+    : 'Hapus AKUN siswa ' + acc.email + '? Akun ini belum memiliki pendaftaran siswa (pendaftaran belum lengkap). Tindakan ini tidak dapat dibatalkan.';
+  if(!confirm(pesan)) return;
+  if(st){
+    db.students = db.students.filter(s => s.id !== st.id);
+    db.attendance = db.attendance.filter(a => a.studentId !== st.id);
+    if(adminEditId === st.id){ adminEditId = null; adminUbahKeep = null; dokAdmin = null; }
+  }
+  db.accounts = db.accounts.filter(a => a.id !== id);
+  // Bila akun yang dihapus sedang masuk di perangkat ini, akhiri sesinya.
+  if(sessionAccountId === id) setSession(null);
+  saveDB();
+  adminMsg = { type:'ok', text:'✅ Akun siswa ' + acc.email + (st ? ' beserta data siswa dan catatan kehadirannya' : '') + ' berhasil dihapus.' };
   render();
 }
 function adminKelasHtml(){
@@ -2431,7 +2801,21 @@ function adminRekapChange(v){ if(v) adminRekapMonth = v; render(); }
 
 /* ============================== MULAI ============================== */
 absenLoadDraft();
-setSession(currentAccount());
+(function(){
+  const a = currentAccount();
+  // Akun lama yang belum memiliki kata sandi: sesi tersimpannya diakhiri di
+  // sini agar pada masuk berikutnya pemiliknya melewati langkah "Buat Kata
+  // Sandi" (verifikasi nomor HP satu kali). Data mereka tidak berubah.
+  if(a && akunWarisan(a)) setSession(null);
+  else setSession(a);
+  // Samakan mode awal dengan sesi yang masih aktif: pemilih mode
+  // disembunyikan selama pengguna masuk, jadi pengguna harus mendarat
+  // langsung di portal milik sesinya.
+  const aktif = currentAccount();
+  if(aktif) mode = aktif.role;
+  else if(adminLogin) mode = 'admin';
+  try{ localStorage.setItem(MODE_KEY, mode); }catch(e){}
+})();
 render();
 // Daftarkan service worker agar aplikasi bisa dibuka tanpa internet (hanya via http/https).
 if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){

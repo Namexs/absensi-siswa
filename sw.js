@@ -1,6 +1,6 @@
 // Service Worker Absensi Siswa — membuat aplikasi bisa dibuka tanpa internet
 // setelah kunjungan pertama. Strategi: cache-first untuk berkas satu origin.
-const CACHE = 'absensi-siswa-v2';
+const CACHE = 'absensi-siswa-v3';
 const APP_SHELL = [
   './',
   'index.html',

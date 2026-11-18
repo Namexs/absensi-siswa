@@ -26,11 +26,45 @@ setelah kunjungan pertama.
   dibuat sendiri oleh penggunanya lewat formulir pendaftaran di masing-masing
   mode. (Guru menambahkan catatan siswa ke daftar kelasnya adalah data kelas,
   bukan akun masuk.)
+- Admin **menerbitkan token pendaftaran** dari tab **Token Daftar** di panel
+  admin (lihat bagian *Token pendaftaran* di bawah) — tanpa token yang sah,
+  tidak ada akun guru/siswa baru yang dapat dibuat.
+- Admin dapat **mengatur ulang kata sandi** akun guru/siswa mana pun dari
+  panel admin (tombol **Atur Ulang Kata Sandi**): admin menetapkan kata sandi
+  baru, kata sandi lama langsung berhenti berlaku. Kata sandi pengguna tidak
+  pernah dapat dilihat siapa pun — yang tersimpan hanya hash-nya.
+- Admin dapat **menghapus data siswa** dari panel admin (tombol **Hapus** /
+  **Hapus Siswa** pada setiap catatan siswa): penghapusan selalu meminta
+  konfirmasi terlebih dahulu, dan catatan kehadiran siswa itu ikut terhapus.
+  Admin juga dapat **menghapus akun siswa** (tombol **Hapus Akun**) —
+  termasuk akun yang pendaftarannya gagal/belum lengkap dan belum memiliki
+  data siswa; bila akun itu memiliki data siswa, data dan kehadirannya ikut
+  terhapus.
+
+## Token pendaftaran
+
+Pendaftaran akun memerlukan **token sekali pakai dari Admin**, untuk mencegah
+pendaftaran akun ganda/sembarangan:
+
+- **Token Siswa — 5 karakter**, hanya dapat dipakai untuk mendaftar **akun
+  Siswa**.
+- **Token Guru — 7 karakter**, hanya dapat dipakai untuk mendaftar **akun
+  Guru**.
+- Setiap token **unik** (diperiksa terhadap semua token yang ada saat dibuat)
+  dan **hangus begitu satu akun berhasil dibuat** dengannya.
+- Admin mengelola kedua jenis token secara terpisah di tab **Token Daftar**:
+  membuat token (1 atau 5 sekaligus), melihat daftar beserta statusnya
+  (*belum dipakai* / *sudah dipakai oleh akun mana* / *dicabut*), dan
+  **mencabut** token yang belum dipakai.
+- Pendaftaran tanpa token, dengan token yang salah, token peran lain, token
+  yang sudah dipakai, atau token yang dicabut akan **ditolak** dengan pesan
+  yang jelas.
 
 ### 👩‍🏫 Guru
 
 - Mode Guru memerlukan **akun guru** yang didaftarkan sendiri dengan
-  **email + nomor HP**; masuk memakai pasangan yang sama.
+  **email, nomor HP, kata sandi, dan Token Guru (7 karakter)** dari Admin;
+  masuk memakai **email + kata sandi**.
 - Setiap guru hanya melihat dan mengelola **data miliknya**: kelas yang ia
   buat berlabel pemilik akunnya (`ownerTeacherId`), dan siswa/absensi/rekap
   yang tampil hanyalah yang berada di kelas-kelas itu. Data guru lain di
@@ -45,7 +79,8 @@ setelah kunjungan pertama.
 ### 🎓 Siswa
 
 - Portal siswa memerlukan **akun siswa** yang didaftarkan sendiri dengan
-  **email + nomor HP**.
+  **email, nomor HP, kata sandi, dan Token Siswa (5 karakter)** dari Admin;
+  masuk memakai **email + kata sandi**.
 - Setelah masuk, pengguna mendaftarkan **satu siswa** (satu akun = satu
   pendaftaran; formulir terkunci setelahnya) dengan **identitas lengkap**:
   nama lengkap, NISN, tempat lahir, tanggal lahir, nama ayah, nama ibu,
@@ -81,7 +116,10 @@ ekspor adalah jalur cadangannya:
 
 - **Admin** dapat mengekspor **seluruh data perangkat** menjadi satu berkas
   JSON dan mengimpor berkas semacam itu kembali (isi berkas **digabungkan**
-  ke data yang ada; catatan yang sudah ada dilewati, tidak ditimpa).
+  ke data yang ada; catatan yang sudah ada dilewati, tidak ditimpa). Ekspor
+  admin mencakup juga token pendaftaran dan kredensial akun dalam bentuk
+  **hash kata sandi** (bukan kata sandi aslinya), sehingga akun hasil
+  pemulihan tetap masuk dengan kata sandinya.
 - **Guru** dapat mengekspor/mengimpor **data miliknya sendiri** dengan cara
   yang sama (menu Ekspor & Impor Data di tab Siswa mode Guru).
 - **Rekap CSV**: rekap kehadiran bulanan dapat diunduh sebagai berkas CSV
@@ -115,35 +153,51 @@ Penguatan yang diterapkan pada aplikasi ini:
 - **Lingkup data:** mode Siswa hanya pernah mengakses catatan milik akun
   yang sedang masuk; tidak ada pegangan debug/global yang membuka seluruh
   penyimpanan data ke `window`.
+- **Kata sandi pengguna disimpan sebagai hash**, bukan teks biasa: setiap
+  akun memiliki garam acak sendiri dan yang disimpan adalah hash
+  SHA-256(garam + kata sandi) yang dihitung dengan WebCrypto
+  (`crypto.subtle`). Kata sandi asli tidak tersimpan di mana pun dan tidak
+  dapat ditampilkan kembali oleh siapa pun, termasuk admin.
 
 Batasan yang tersisa (jujur apa adanya):
 
 - Data tersimpan **tanpa enkripsi** di localStorage perangkat. Siapa pun
   yang memegang perangkat/peramban itu dapat membaca atau mengubah datanya.
 - Kata sandi admin tertanam di kode halaman publik = **gerbang ringan**,
-  bukan pengaman kuat (lihat bagian Admin).
-- Tidak ada akun yang bisa dipulihkan dari server — lupa pasangan
-  email+nomor HP berarti data di perangkat itu tidak bisa dibuka lagi
-  lewat akun tersebut (admin masih dapat melihat datanya di perangkat
-  yang sama). Pemulihannya bersifat manual oleh Admin: tautan
-  "Lupa kata sandi?" pada formulir masuk guru & siswa menjelaskan bahwa
-  hanya Admin yang dapat mengatur ulang data masuk, dan dari Panel Admin
-  tombol **Atur Ulang Data Masuk** pada setiap akun guru/siswa mengganti
-  email dan/atau nomor HP akun itu (email baru tidak boleh sama dengan
-  akun lain). Setelah diatur ulang, pemilik masuk dengan data yang baru.
-  Tidak ada OTP dan tidak ada pengiriman email/SMS di aplikasi ini.
+  bukan pengaman kuat (lihat bagian Admin). Hash kata sandi pengguna pun
+  dihitung **di sisi klien** pada situs statis publik — perlindungannya
+  setara gerbang ringan, **bukan** keamanan sekelas server: hash mencegah
+  kata sandi terbaca langsung dari data, tetapi tidak menggantikan
+  pengamanan server.
+- Tidak ada akun yang bisa dipulihkan dari server — lupa kata sandi berarti
+  akun di perangkat itu tidak bisa dibuka sampai **Admin mengatur ulang
+  kata sandinya** dari Panel Admin (tombol **Atur Ulang Kata Sandi** pada
+  setiap akun guru/siswa; admin menetapkan kata sandi baru dan kata sandi
+  lama berhenti berlaku). Tautan "Lupa kata sandi?" pada formulir masuk
+  guru & siswa menjelaskan hal ini. Tidak ada OTP dan tidak ada pengiriman
+  email/SMS di aplikasi ini.
+
+## Akun lama (sebelum ada kata sandi)
+
+Akun yang dibuat pada versi aplikasi sebelumnya (masuk dengan email +
+nomor HP, tanpa kata sandi) **tidak dihapus dan datanya tidak hilang**.
+Saat pemiliknya masuk lagi, sesi lamanya diakhiri dan ia diarahkan ke satu
+langkah **"Buat Kata Sandi"**: verifikasi nomor HP yang terdaftar satu
+kali, lalu buat kata sandi. Setelah itu akun tersebut masuk dengan
+email + kata sandi seperti akun baru. Admin juga dapat langsung menetapkan
+kata sandi pertama akun lama lewat **Atur Ulang Kata Sandi**.
 
 ## Cara data disimpan
 
-Semua data (akun, kelas, siswa, absensi) tersimpan **di peramban perangkat
-yang dipakai** (localStorage) — tidak ada server dan tidak ada data yang
-dikirim ke mana pun. Artinya:
+Semua data (akun, token, kelas, siswa, absensi) tersimpan **di peramban
+perangkat yang dipakai** (localStorage) — tidak ada server dan tidak ada
+data yang dikirim ke mana pun. Artinya:
 
 - Data di HP guru dan di HP siswa **terpisah**; catatan yang dibuat di satu
   perangkat tidak muncul di perangkat lain.
 - Akun juga hanya ada di perangkat tempat ia dibuat. Berganti HP berarti
-  membuat akun baru di HP tersebut (data guru dapat dipindahkan lewat
-  Ekspor & Impor Data).
+  membuat akun baru di HP tersebut dengan token baru dari Admin (data guru
+  dapat dipindahkan lewat Ekspor & Impor Data).
 - Jangan menghapus data peramban/cache aplikasi ini bila tidak ingin
   datanya hilang. Buat ekspor JSON secara berkala sebagai cadangan.
 - Aplikasi mulai dari kosong: guru mengisi kelas dan siswanya sendiri.
